@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/integrations/supabase/client";
+import { edgeUrl } from "@/utils/edge";
 import { Wand2 } from "lucide-react";
 
 type Analysis = {
@@ -34,7 +35,7 @@ export default function AnalyzeImagePanel({ directImageUrl, onAnalysis }: Props)
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("analyze-image", {
+      const { data, error } = await supabase.functions.invoke(edgeUrl("analyze-image"), {
         body: { imageUrl: directImageUrl },
       });
       if (error) {
