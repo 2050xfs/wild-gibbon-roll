@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
-import { Trash2 } from "lucide-react";
+import { Trash2, RefreshCw } from "lucide-react";
 
 type VideoTask = {
   id: string;
@@ -35,6 +35,7 @@ export default function VideoTaskManager() {
   const [tasks, setTasks] = React.useState<VideoTask[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [refreshing, setRefreshing] = React.useState(false);
 
   // Fetch tasks
   const fetchTasks = React.useCallback(async () => {
@@ -48,6 +49,14 @@ export default function VideoTaskManager() {
     setTasks(data.tasks || []);
     setLoading(false);
   }, []);
+
+  // Manual refresh for ready results
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await fetchTasks();
+    setRefreshing(false);
+    showSuccess("Results refreshed");
+  };
 
   // Poll for updates
   React.useEffect(() => {
@@ -173,7 +182,20 @@ export default function VideoTaskManager() {
 
         {/* Ready/Completed Videos */}
         <div>
-          <h3 className="font-semibold mb-2">Results Ready</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold">Results Ready</h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1"
+              aria-label="Refresh Results"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh Results
+            </Button>
+          </div>
           {loading ? (
             <div>Loading...</div>
           ) : readyTasks.length === 0 ? (
