@@ -4,13 +4,24 @@ import * as React from "react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import CreativeBriefForm from "@/components/CreativeBriefForm";
 import PromptPreview from "@/components/PromptPreview";
+import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+type ImageAnalysis = {
+  brand_name?: string | null;
+  color_scheme?: string[] | null;
+  font_style?: string | null;
+  visual_description?: string | null;
+};
 
 const Index = () => {
   const [brief, setBrief] = React.useState<CreativeBrief | undefined>(undefined);
   const [scenes, setScenes] = React.useState<SceneOutput[] | undefined>(undefined);
   const [directImageUrl, setDirectImageUrl] = React.useState<string | undefined>(undefined);
+  const [analysis, setAnalysis] = React.useState<ImageAnalysis | null | undefined>(undefined);
+
+  const hasDirectImage = !!directImageUrl;
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -25,7 +36,7 @@ const Index = () => {
         <Alert>
           <AlertTitle>Next step: Backend for media generation</AlertTitle>
           <AlertDescription>
-            To automatically call OpenAI/Key.AI and upload to cloud storage (Steps 2, 5–11), add Supabase so we can run secure functions and store files.
+            You can now analyze your product image (Step 2). To fully automate Steps 5–11 (image/video generation + uploads), we’ll add secure functions next.
           </AlertDescription>
         </Alert>
 
@@ -35,9 +46,18 @@ const Index = () => {
               setBrief(b);
               setScenes(s);
               setDirectImageUrl(direct);
+              setAnalysis(undefined);
             }}
           />
-          <PromptPreview brief={brief} scenes={scenes} directImageUrl={directImageUrl} />
+
+          <PromptPreview brief={brief} scenes={scenes} directImageUrl={directImageUrl} analysis={analysis ?? null} />
+
+          {hasDirectImage && (
+            <AnalyzeImagePanel
+              directImageUrl={directImageUrl}
+              onAnalysis={(a) => setAnalysis(a ?? null)}
+            />
+          )}
         </div>
 
         <MadeWithDyad />

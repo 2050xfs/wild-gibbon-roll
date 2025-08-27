@@ -8,13 +8,21 @@ import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { showSuccess } from "@/utils/toast";
 import { Copy, Download } from "lucide-react";
 
+type ImageAnalysis = {
+  brand_name?: string | null;
+  color_scheme?: string[] | null;
+  font_style?: string | null;
+  visual_description?: string | null;
+};
+
 type Props = {
   brief?: CreativeBrief;
   scenes?: SceneOutput[];
   directImageUrl?: string;
+  analysis?: ImageAnalysis | null;
 };
 
-export default function PromptPreview({ brief, scenes, directImageUrl }: Props) {
+export default function PromptPreview({ brief, scenes, directImageUrl, analysis }: Props) {
   const hasData = brief && scenes && scenes.length > 0;
 
   const jsonPayload = hasData
@@ -24,6 +32,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl }: Props) 
           aspectRatio: brief!.aspectRatio,
           numberOfVideos: brief!.numberOfVideos,
           directImageUrl: directImageUrl ?? null,
+          analysis: analysis ?? null,
         },
         scenes: scenes!.map((s) => ({
           id: s.id,
