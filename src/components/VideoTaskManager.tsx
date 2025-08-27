@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
-import { Trash2, RefreshCw } from "lucide-react";
+import { Trash2, RefreshCw, Search } from "lucide-react";
 
 type VideoTask = {
   id: string;
@@ -48,6 +48,10 @@ export default function VideoTaskManager() {
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
+  // Manual KIE status check
+  const [manualTaskId, setManualTaskId] = React.useState("");
+  const [manualKieStatus, setManualKieStatus] = React.useState<KieStatus | null>(null);
+
   // Fetch tasks from Supabase
   const fetchTasks = React.useCallback(async () => {
     setLoading(true);
@@ -80,6 +84,22 @@ export default function VideoTaskManager() {
       setKieStatuses([]);
     }
   }, []);
+
+  // Manual KIE status check
+  const handleManualKieCheck = async () => {
+    if (!manualTaskId.trim()) return;
+    setManualKieStatus(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("get-kie-task-status", { body: { taskIds: [manualTaskId.trim()] } });
+      if (error) {
+        showError("Failed to fetch KIE status");
+        return;
+      }
+      setManualKieStatus((data.results && data.results[0]) || null);
+    } catch (e: any) {
+      showError(e?.message || "Failed to fetch KIE status");
+    }
+  };
 
   // Manual refresh for results
   const handleManualRefresh = async () => {
@@ -197,6 +217,25 @@ export default function VideoTaskManager() {
         </form>
         <Separator />
 
+        {/* Manual KIE status check */}
+        <div className="flex items-center gap-2 mb-4">
+          <Input
+            placeholder="Enter KIE taskId to check status"
+            value={manualTaskId}
+            onChange={e => setManualTaskId(e.target.value)}
+            className="max-w-xs"
+          />
+          <Button variant="secondary" size="sm" onClick={handleManualKieCheck}>
+            <Search className="h-4 w-4 mr-1" /> Check KIE Status
+          </Button>
+        </div>
+        {manualKieStatus && (
+          <div className="mb-4 p-2 border rounded bg-muted">
+            <div className="font-semibold">Manual KIE Status for {manualKieStatus.taskId}</div>
+            <pre className="text-xs">{JSON.stringify(manualKieStatus, null, 2)}</pre>
+          </div>
+        )}
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold">All Generations (Live KIE Status)</h3>
@@ -212,6 +251,13 @@ export default function VideoTaskManager() {
               Refresh Results
             </Button>
           </div>
+          {/* Debug output for all taskIds and KIE statuses */}
+          <pre className="text-xs bg-muted p-2 rounded mb-2 overflow-x-auto">
+            {JSON.stringify({
+              taskIds: tasks.map(t => t.task_id),
+              kieStatuses
+            }, null, 2)}
+          </pre>
           {loading ? (
             <div>Loading...</div>
           ) : kieStatuses.length === 0 ? (
