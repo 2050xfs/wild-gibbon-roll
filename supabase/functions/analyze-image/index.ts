@@ -16,6 +16,8 @@ type Analysis = {
   visual_description?: string | null;
 };
 
+const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
+
 function normalizeMime(ct?: string | null): string | null {
   if (!ct) return null;
   const base = ct.split(";")[0].trim().toLowerCase();
@@ -80,36 +82,33 @@ serve(async (req) => {
     });
   }
 
-  // Step 2: Always decode the bytes to an image and re-encode as PNG.
-  // This guarantees OpenAI sees a supported format regardless of the source.
-  let pngBytes: Uint8Array;
-  try {
-    const img = await Image.decode(buf);
-    // Optional: downscale very large images (commented to keep simple)
-    // const MAX = 2048;
-    // if (img.width > MAX || img.height > MAX) {
-    //   const ratio = Math.min(MAX / img.width, MAX / img.height);
-    //   const w = Math.max(1, Math.round(img.width * ratio));
-    //   const h = Math.max(1, Math.round(img.height * ratio));
-    //   img.resize(w, h);
-    // }
-    pngBytes = await img.encode(); // PNG by default
-  } catch (_e) {
-    // If decode failed, the fetched content wasn't a valid image (often HTML from Drive).
-    return new Response(
-      JSON.stringify({
-        error: "Fetched content is not a valid image (could not decode).",
-        hint: "Ensure the link is a direct file URL accessible without cookies (Drive 'Anyone with the link' + direct download link).",
-        received_content_type: contentType || "unknown",
-        bytes: buf.length,
-      }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  // Step 2: Ensure supported image format; if unknown/unsupported, re-encode to PNG
+  let finalBytes: Uint8Array;
+  let finalMime: string;
+
+  if (!contentType || !ALLOWED_MIME.has(contentType)) {
+    // Attempt to decode and re-encode as PNG
+    try {
+      const img = await Image.decode(buf);
+      finalBytes = await img.encode(); // PNG by default
+      finalMime = "image/png";
+    } catch (_e) {
+      return new Response(
+        JSON.stringify({
+          error: "Unsupported or unreadable image format. Could not convert to PNG.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  } else {
+    // Use original bytes and content type
+    finalBytes = buf;
+    finalMime = contentType === "image/jpg" ? "image/jpeg" : contentType;
   }
 
-  // Step 3: Convert to data URL for OpenAI
-  const base64 = encodeBase64(pngBytes);
-  const dataUrl = `data:image/png;base64,${base64}`;
+  // Step 3: Convert to data URL for OpenAI (avoids remote fetch issues)
+  const base64 = encodeBase64(finalBytes);
+  const dataUrl = `data:${finalMime};base64,${base64}`;
 
   const systemPrompt =
     "You are a precise visual brand analyst. Return concise JSON only, no extra text.";
