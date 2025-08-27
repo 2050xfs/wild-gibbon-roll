@@ -5,6 +5,7 @@ import { MadeWithDyad } from "@/components/made-with-dyad";
 import CreativeBriefForm from "@/components/CreativeBriefForm";
 import PromptPreview from "@/components/PromptPreview";
 import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
+import KieConsole from "@/components/KieConsole";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -22,6 +23,18 @@ const Index = () => {
   const [analysis, setAnalysis] = React.useState<ImageAnalysis | null | undefined>(undefined);
 
   const hasDirectImage = !!directImageUrl;
+
+  // Prefill a reasonable KIE request body template from Scene 1
+  const firstScene = scenes?.[0];
+  const kieTemplate = firstScene && directImageUrl
+    ? {
+        // Adjust fields according to KIE docs if needed:
+        prompt: firstScene.videoPrompt,
+        aspect_ratio: firstScene.videoAspectRatio, // e.g., "9:16"
+        model: brief?.modelChoice === "V3 Fast" ? "veo3-1-fast" : "veo3-1",
+        init_image_url: directImageUrl,
+      }
+    : undefined;
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -58,6 +71,14 @@ const Index = () => {
               onAnalysis={(a) => setAnalysis(a ?? null)}
             />
           )}
+
+          <KieConsole
+            defaultPath="/v1/veo3/videos"
+            defaultMethod="POST"
+            defaultBody={kieTemplate}
+            title="KIE AI Proxy — Live Test"
+            description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
+          />
         </div>
 
         <MadeWithDyad />
