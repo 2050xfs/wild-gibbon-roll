@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/integrations/supabase/client";
-import { edgeUrl } from "@/utils/edge";
 import { Wand2 } from "lucide-react";
 
 type Analysis = {
@@ -35,7 +34,7 @@ export default function AnalyzeImagePanel({ directImageUrl, onAnalysis }: Props)
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke(edgeUrl("analyze-image"), {
+      const { data, error } = await supabase.functions.invoke("analyze-image", {
         body: { imageUrl: directImageUrl },
       });
       if (error) {
@@ -93,7 +92,7 @@ export default function AnalyzeImagePanel({ directImageUrl, onAnalysis }: Props)
                   <div className="text-sm font-medium">Color scheme:</div>
                   <div className="flex flex-wrap gap-2">
                     {(result.color_scheme || []).map((hex) => (
-                      <div key={hex} className="flex items-center gap-2">
+                      <div key={hex || ""} className="flex items-center gap-2">
                         <span className="h-4 w-4 rounded border" style={{ backgroundColor: hex || "#ccc" }} />
                         <span className="text-xs text-muted-foreground">{hex}</span>
                       </div>
