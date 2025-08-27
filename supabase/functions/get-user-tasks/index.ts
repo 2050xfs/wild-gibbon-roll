@@ -22,8 +22,13 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
   const authHeader = req.headers.get("authorization") || "";
-  const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer /, ""));
-  if (!user) return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401, headers: corsHeaders });
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: "No Authorization header sent. User must be logged in." }), { status: 401, headers: corsHeaders });
+  }
+  const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace(/^Bearer /, ""));
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Not authenticated", details: userError }), { status: 401, headers: corsHeaders });
+  }
 
   const { data, error } = await supabase
     .from("video_tasks")

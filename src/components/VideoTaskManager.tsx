@@ -32,13 +32,19 @@ export default function VideoTaskManager() {
   const [submitting, setSubmitting] = React.useState(false);
   const [tasks, setTasks] = React.useState<VideoTask[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [authError, setAuthError] = React.useState<string | null>(null);
 
   // Fetch tasks
   const fetchTasks = React.useCallback(async () => {
     setLoading(true);
+    setAuthError(null);
     const { data, error } = await supabase.functions.invoke("get-user-tasks", { body: {} });
     if (error) {
-      showError("Failed to load tasks");
+      if (error.message?.toLowerCase().includes("not authenticated") || error.message?.toLowerCase().includes("authorization")) {
+        setAuthError("You must be logged in to view your video tasks.");
+      } else {
+        showError("Failed to load tasks");
+      }
       setLoading(false);
       return;
     }
@@ -79,75 +85,81 @@ export default function VideoTaskManager() {
         <CardTitle>Generate VEO3 Video (Async)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Textarea
-            placeholder="Prompt for your video..."
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            required
-            disabled={submitting}
-          />
-          <div className="flex gap-2">
-            <Select value={aspectRatio} onValueChange={setAspectRatio} disabled={submitting}>
-              <SelectTrigger><SelectValue placeholder="Aspect Ratio" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
-                <SelectItem value="16:9">16:9 (Landscape)</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={model} onValueChange={setModel} disabled={submitting}>
-              <SelectTrigger><SelectValue placeholder="Model" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="veo3_fast">VEO3 Fast</SelectItem>
-                <SelectItem value="veo3">VEO3 Quality</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="Image URL (optional)"
-              value={imageUrl}
-              onChange={e => setImageUrl(e.target.value)}
-              disabled={submitting}
-            />
-          </div>
-          <Button type="submit" disabled={submitting || !prompt}>
-            {submitting ? "Submitting..." : "Start Generation"}
-          </Button>
-        </form>
-        <Separator />
-        <div>
-          <h3 className="font-semibold mb-2">Your Video Tasks</h3>
-          {loading ? (
-            <div>Loading...</div>
-          ) : tasks.length === 0 ? (
-            <div>No video tasks yet.</div>
-          ) : (
-            <div className="space-y-4">
-              {tasks.map(task => (
-                <div key={task.id} className="p-3 border rounded">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{task.prompt}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {task.model} • {task.aspect_ratio} • {task.created_at.slice(0, 19).replace("T", " ")}
+        {authError ? (
+          <div className="text-destructive text-center py-4">{authError}</div>
+        ) : (
+          <>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Textarea
+                placeholder="Prompt for your video..."
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                required
+                disabled={submitting}
+              />
+              <div className="flex gap-2">
+                <Select value={aspectRatio} onValueChange={setAspectRatio} disabled={submitting}>
+                  <SelectTrigger><SelectValue placeholder="Aspect Ratio" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
+                    <SelectItem value="16:9">16:9 (Landscape)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={model} onValueChange={setModel} disabled={submitting}>
+                  <SelectTrigger><SelectValue placeholder="Model" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="veo3_fast">VEO3 Fast</SelectItem>
+                    <SelectItem value="veo3">VEO3 Quality</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Image URL (optional)"
+                  value={imageUrl}
+                  onChange={e => setImageUrl(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+              <Button type="submit" disabled={submitting || !prompt}>
+                {submitting ? "Submitting..." : "Start Generation"}
+              </Button>
+            </form>
+            <Separator />
+            <div>
+              <h3 className="font-semibold mb-2">Your Video Tasks</h3>
+              {loading ? (
+                <div>Loading...</div>
+              ) : tasks.length === 0 ? (
+                <div>No video tasks yet.</div>
+              ) : (
+                <div className="space-y-4">
+                  {tasks.map(task => (
+                    <div key={task.id} className="p-3 border rounded">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium">{task.prompt}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {task.model} • {task.aspect_ratio} • {task.created_at.slice(0, 19).replace("T", " ")}
+                          </div>
+                        </div>
+                        <div>
+                          {task.status === "pending" && <span className="text-yellow-600 font-semibold">Processing…</span>}
+                          {task.status === "ready" && <span className="text-green-600 font-semibold">Ready</span>}
+                          {task.status === "failed" && <span className="text-red-600 font-semibold">Failed</span>}
+                        </div>
                       </div>
+                      {task.status === "ready" && task.video_url && (
+                        <video src={task.video_url} controls className="mt-2 w-full max-w-md rounded" />
+                      )}
+                      {task.status === "failed" && (
+                        <div className="text-xs text-destructive mt-2">{task.error || "Unknown error"}</div>
+                      )}
                     </div>
-                    <div>
-                      {task.status === "pending" && <span className="text-yellow-600 font-semibold">Processing…</span>}
-                      {task.status === "ready" && <span className="text-green-600 font-semibold">Ready</span>}
-                      {task.status === "failed" && <span className="text-red-600 font-semibold">Failed</span>}
-                    </div>
-                  </div>
-                  {task.status === "ready" && task.video_url && (
-                    <video src={task.video_url} controls className="mt-2 w-full max-w-md rounded" />
-                  )}
-                  {task.status === "failed" && (
-                    <div className="text-xs text-destructive mt-2">{task.error || "Unknown error"}</div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
