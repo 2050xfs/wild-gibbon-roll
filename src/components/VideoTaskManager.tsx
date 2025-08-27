@@ -20,6 +20,10 @@ type VideoTask = {
   image_urls: string[];
   status: string;
   video_url?: string;
+  kie_ai_result_url?: string;
+  kie_ai_credits?: number;
+  kie_ai_time?: string;
+  task_id: string;
   error?: string;
   created_at: string;
 };
@@ -204,10 +208,6 @@ export default function VideoTaskManager() {
               Refresh Results
             </Button>
           </div>
-          {/* Debug output for readyTasks */}
-          <pre className="text-xs bg-muted p-2 rounded mb-2 overflow-x-auto">
-            {JSON.stringify(readyTasks, null, 2)}
-          </pre>
           {loading ? (
             <div>Loading...</div>
           ) : readyTasks.length === 0 ? (
@@ -216,12 +216,26 @@ export default function VideoTaskManager() {
             <div className="space-y-4">
               {readyTasks.map(task => (
                 <div key={task.id} className="p-3 border rounded relative">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                     <div>
                       <div className="font-medium">{task.prompt}</div>
                       <div className="text-xs text-muted-foreground">
-                        {task.model} • {task.aspect_ratio} • {task.created_at.slice(0, 19).replace("T", " ")}
+                        Model: {task.model} • Aspect: {task.aspect_ratio} • Created: {task.created_at.slice(0, 19).replace("T", " ")}
                       </div>
+                      <div className="text-xs text-muted-foreground">
+                        <span>Task ID: {task.task_id}</span>
+                        {task.kie_ai_credits !== undefined && (
+                          <> • Credits: {task.kie_ai_credits}</>
+                        )}
+                        {task.kie_ai_time && (
+                          <> • Time: {new Date(task.kie_ai_time).toLocaleString()}</>
+                        )}
+                      </div>
+                      {task.kie_ai_result_url && (
+                        <div className="text-xs text-muted-foreground break-all">
+                          KIE AI Result: <a href={task.kie_ai_result_url} target="_blank" rel="noopener noreferrer" className="underline">Original Video Link</a>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <AlertDialog open={deleteId === task.id} onOpenChange={open => setDeleteId(open ? task.id : null)}>
