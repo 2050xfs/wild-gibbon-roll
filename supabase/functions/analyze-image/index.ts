@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
+import { encode as encodeBase64 } from "https://deno.land/std@0.190.0/encoding/base64.ts"
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +15,15 @@ type Analysis = {
   font_style?: string | null;
   visual_description?: string | null;
 };
+
+const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
+
+function normalizeMime(ct?: string | null): string | null {
+  if (!ct) return null;
+  const base = ct.split(";")[0].trim().toLowerCase();
+  if (base === "image/jpg") return "image/jpeg";
+  return base;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -52,6 +63,53 @@ serve(async (req) => {
     });
   }
 
+  // Step 1: Download the image
+  const upstream = await fetch(imageUrl);
+  if (!upstream.ok) {
+    const details = await upstream.text().catch(() => "");
+    return new Response(
+      JSON.stringify({ error: "Failed to fetch image", status: upstream.status, details }),
+      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const contentType = normalizeMime(upstream.headers.get("content-type"));
+  const buf = new Uint8Array(await upstream.arrayBuffer());
+  if (!buf.length) {
+    return new Response(JSON.stringify({ error: "Downloaded image is empty" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Step 2: Ensure supported image format; if unknown/unsupported, re-encode to PNG
+  let finalBytes: Uint8Array;
+  let finalMime: string;
+
+  if (!contentType || !ALLOWED_MIME.has(contentType)) {
+    // Attempt to decode and re-encode as PNG
+    try {
+      const img = await Image.decode(buf);
+      finalBytes = await img.encode(); // PNG by default
+      finalMime = "image/png";
+    } catch (_e) {
+      return new Response(
+        JSON.stringify({
+          error: "Unsupported or unreadable image format. Could not convert to PNG.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  } else {
+    // Use original bytes and content type
+    finalBytes = buf;
+    finalMime = contentType === "image/jpg" ? "image/jpeg" : contentType;
+  }
+
+  // Step 3: Convert to data URL for OpenAI (avoids remote fetch issues)
+  const base64 = encodeBase64(finalBytes);
+  const dataUrl = `data:${finalMime};base64,${base64}`;
+
   const systemPrompt =
     "You are a precise visual brand analyst. Return concise JSON only, no extra text.";
 
@@ -71,7 +129,7 @@ Do not include any keys other than these four.`;
         role: "user",
         content: [
           { type: "text", text: userPrompt },
-          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "image_url", image_url: { url: dataUrl } },
         ],
       },
     ],
