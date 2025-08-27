@@ -77,7 +77,11 @@ export default function VideoTaskManager() {
       const body: any = { prompt, model, aspectRatio };
       if (imageUrl) body.imageUrls = [imageUrl];
       const { data, error } = await supabase.functions.invoke("create-video-task", { body });
-      if (error) throw new Error(error.message);
+      if (error) {
+        showError(error.message || "Failed to start video generation");
+        setSubmitting(false);
+        return;
+      }
       showSuccess("Video generation started!");
       setPrompt("");
       setImageUrl("");
@@ -157,6 +161,11 @@ export default function VideoTaskManager() {
           </Button>
         </form>
         <Separator />
+
+        {/* Debug output for all tasks */}
+        <pre className="text-xs bg-muted p-2 rounded mb-2 overflow-x-auto">
+          {JSON.stringify(tasks, null, 2)}
+        </pre>
 
         {/* Pending/Processing Tasks */}
         <div>
