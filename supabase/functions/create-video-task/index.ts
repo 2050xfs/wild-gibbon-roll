@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,66 +8,66 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type CreateVideoBody = {
-  prompt: string;
-  aspect_ratio: string; // e.g., "9:16", "16:9", "3:4" per KIE docs
-  model?: string;       // e.g., "veo3-1" or "veo3-1-fast"
-  init_image_url?: string; // optional for image-to-video
-  // passthrough for any extra fields supported by KIE
-  [key: string]: unknown;
-};
+const KIE_BASE = (Deno.env.get("KIEAI_BASE_URL") || "").replace(/\/+$/, "");
+const KIE_KEY = Deno.env.get("KIEAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
+  }
+  if (!KIE_BASE || !KIE_KEY || !SUPABASE_URL || !SERVICE_KEY) {
+    return new Response(JSON.stringify({ error: "Missing env vars" }), { status: 500, headers: corsHeaders });
+  }
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+
+  let body;
+  try { body = await req.json(); } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: corsHeaders });
   }
 
-  const baseUrl = (Deno.env.get("KIEAI_BASE_URL") || "").replace(/\/+$/, "");
-  const apiKey = Deno.env.get("KIEAI_API_KEY");
-  if (!baseUrl || !apiKey) {
-    return new Response(JSON.stringify({ error: "KIE AI is not configured (missing KIEAI_BASE_URL or KIEAI_API_KEY)" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const { prompt, model, aspectRatio, imageUrls } = body;
+  const authHeader = req.headers.get("authorization") || "";
+  const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer /, ""));
+  if (!user) return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401, headers: corsHeaders });
 
-  let body: CreateVideoBody;
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  if (!body?.prompt || !body?.aspect_ratio) {
-    return new Response(JSON.stringify({ error: "Missing required fields: prompt, aspect_ratio" }), {
-      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const payload = {
-    model: body.model || "veo3-1",
-    prompt: body.prompt,
-    aspect_ratio: body.aspect_ratio,
-    ...(body.init_image_url ? { init_image_url: body.init_image_url } : {}),
-    // allow any extra options per KIE docs
-    ...body,
-  };
-
-  const upstream = await fetch(`${baseUrl}/v1/veo3/videos`, {
+  // Call KIE AI
+  const kieRes = await fetch(`${KIE_BASE}/api/v1/veo/generate`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "Authorization": `Bearer ${KIE_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      prompt,
+      model,
+      aspectRatio,
+      ...(imageUrls ? { imageUrls } : {}),
+    }),
   });
+  const kieData = await kieRes.json();
+  if (!kieRes.ok || kieData.code !== 200 || !kieData.data?.taskId) {
+    return new Response(JSON.stringify({ error: "KIE AI error", details: kieData }), { status: 502, headers: corsHeaders });
+  }
+  const taskId = kieData.data.taskId;
 
-  const text = await upstream.text();
-  let json: unknown;
-  try { json = JSON.parse(text); } catch { json = { raw: text }; }
+  // Store in DB
+  const { error } = await supabase
+    .from("video_tasks")
+    .insert([{
+      user_id: user.id,
+      prompt,
+      model,
+      aspect_ratio: aspectRatio,
+      image_urls: imageUrls || [],
+      task_id: taskId,
+      status: "pending",
+    }]);
+  if (error) {
+    return new Response(JSON.stringify({ error: "DB insert failed", details: error }), { status: 500, headers: corsHeaders });
+  }
 
-  return new Response(JSON.stringify({ status: upstream.status, data: json }), {
-    status: upstream.ok ? 200 : upstream.status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify({ taskId }), { status: 200, headers: corsHeaders });
 });

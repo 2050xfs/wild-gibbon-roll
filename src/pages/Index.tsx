@@ -6,6 +6,7 @@ import CreativeBriefForm from "@/components/CreativeBriefForm";
 import PromptPreview from "@/components/PromptPreview";
 import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
 import KieConsole from "@/components/KieConsole";
+import VideoTaskManager from "@/components/VideoTaskManager";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -28,11 +29,10 @@ const Index = () => {
   const firstScene = scenes?.[0];
   const kieTemplate = firstScene && directImageUrl
     ? {
-        // Adjust fields according to KIE docs if needed:
         prompt: firstScene.videoPrompt,
-        aspect_ratio: firstScene.videoAspectRatio, // e.g., "9:16"
-        model: brief?.modelChoice === "V3 Fast" ? "veo3-1-fast" : "veo3-1",
-        init_image_url: directImageUrl,
+        aspectRatio: firstScene.videoAspectRatio,
+        model: brief?.modelChoice === "V3 Fast" ? "veo3_fast" : "veo3",
+        imageUrls: [directImageUrl],
       }
     : undefined;
 
@@ -73,12 +73,14 @@ const Index = () => {
           )}
 
           <KieConsole
-            defaultPath="/v1/veo3/videos"
+            defaultPath="/api/v1/veo/generate"
             defaultMethod="POST"
             defaultBody={kieTemplate}
             title="KIE AI Proxy — Live Test"
             description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
           />
+
+          <VideoTaskManager />
         </div>
 
         <MadeWithDyad />
