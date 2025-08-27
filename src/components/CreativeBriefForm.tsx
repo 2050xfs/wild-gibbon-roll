@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { googleDriveShareToDirect } from "@/utils/googleDrive";
 import { showSuccess, showError } from "@/utils/toast";
 import type { AspectRatio, CreativeBrief, DialogueMode, ModelChoice, SceneOutput } from "../types/ugc";
 import { cn } from "@/lib/utils";
 import { Copy, Wand2 } from "lucide-react";
+import { storeImageFromUrl } from "@/utils/storeImage";
 
 const defaultScenes = [
   "casual vlog selfie at home, natural light, minimal makeup",
@@ -36,13 +36,22 @@ function ratioToLabel(r: AspectRatio): { video: "9:16" | "3:4" | "16:9"; image: 
 
 function sanitizeText(s?: string) {
   if (!s) return "";
-  // Rules: avoid m-dashes/hyphens issues, straight quotes, allow ellipses for pauses.
   return s
     .replace(/[“”]/g, '"')
     .replace(/[’]/g, "'")
     .replace(/—/g, " ")
     .replace(/–/g, "-")
     .trim();
+}
+
+function isHttpUrl(s?: string) {
+  if (!s) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function buildScenes(brief: CreativeBrief): SceneOutput[] {
@@ -115,33 +124,42 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
   const [specialRequests, setSpecialRequests] = React.useState(
     "age 22-40; diverse genders; scenes like person in podcast, person in car, everyday mirror selfie",
   );
+  const [uploading, setUploading] = React.useState(false);
+  const [supabaseUrl, setSupabaseUrl] = React.useState<string | undefined>(undefined);
 
-  const direct = googleDriveShareToDirect(referenceImageUrl);
-
-  const handleGenerate = () => {
-    if (!referenceImageUrl) {
-      showError("Please add a Google Drive link to your product image.");
+  const handleGenerate = async () => {
+    if (!isHttpUrl(referenceImageUrl)) {
+      showError("Please add a public image URL (http/https). Google Drive links are also supported.");
       return;
     }
-    const brief: CreativeBrief = {
-      referenceImageUrl,
-      numberOfVideos: Math.max(1, Math.min(10, Number(numberOfVideos || 1))),
-      dialogueMode,
-      scriptText: dialogueMode === "provide" ? scriptText : undefined,
-      modelChoice,
-      aspectRatio,
-      influencerDescription,
-      specialRequests,
-    };
-    const scenes = buildScenes(brief);
-    onScenesReady?.(brief, scenes, direct.directUrl);
-    showSuccess("Generated scene prompts.");
+    setUploading(true);
+    try {
+      const supaUrl = await storeImageFromUrl(referenceImageUrl);
+      setSupabaseUrl(supaUrl);
+      const brief: CreativeBrief = {
+        referenceImageUrl,
+        numberOfVideos: Math.max(1, Math.min(10, Number(numberOfVideos || 1))),
+        dialogueMode,
+        scriptText: dialogueMode === "provide" ? scriptText : undefined,
+        modelChoice,
+        aspectRatio,
+        influencerDescription,
+        specialRequests,
+      };
+      const scenes = buildScenes(brief);
+      onScenesReady?.(brief, scenes, supaUrl);
+      showSuccess("Image uploaded and scene prompts generated.");
+    } catch (e: any) {
+      showError(e?.message || "Failed to upload image.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleCopyDirect = async () => {
-    if (!direct.directUrl) return;
-    await navigator.clipboard.writeText(direct.directUrl);
-    showSuccess("Direct image link copied.");
+    if (!supabaseUrl) return;
+    await navigator.clipboard.writeText(supabaseUrl);
+    showSuccess("Supabase image link copied.");
   };
 
   return (
@@ -153,23 +171,25 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
       <CardContent className="space-y-6">
         <div className="grid md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="referenceImageUrl">Reference Image (Google Drive share link)</Label>
+            <Label htmlFor="referenceImageUrl">Reference Image (any public URL or Google Drive share)</Label>
             <Input
               id="referenceImageUrl"
-              placeholder="https://drive.google.com/file/d/XXXX/view?usp=sharing"
+              placeholder="https://storage.googleapis.com/.../image.jpeg  or  https://drive.google.com/file/d/XXXX/view"
               value={referenceImageUrl}
               onChange={(e) => setReferenceImageUrl(e.target.value)}
+              disabled={uploading}
             />
-            {direct.directUrl ? (
-              <div className="text-sm text-muted-foreground flex items-center gap-2">
-                <Badge variant="secondary">Direct Link Ready</Badge>
+            {supabaseUrl ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+                <Badge variant="secondary">Supabase Hosted</Badge>
                 <Button variant="ghost" size="sm" onClick={handleCopyDirect} className="h-7 px-2">
-                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy direct link
+                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy link
                 </Button>
+                <span className="truncate max-w-full">{supabaseUrl}</span>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Share your Drive image “Anyone with the link”. We’ll convert it to a direct URL.
+                Paste any publicly accessible image link. For Google Drive, set sharing to “Anyone with the link”.
               </p>
             )}
           </div>
@@ -183,6 +203,7 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
               max={10}
               value={numberOfVideos}
               onChange={(e) => setNumberOfVideos(parseInt(e.target.value || "1", 10))}
+              disabled={uploading}
             />
             <p className="text-sm text-muted-foreground">Create 1–10 scenes per run.</p>
           </div>
@@ -193,7 +214,7 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
         <div className="grid md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>Model Choice</Label>
-            <Select value={modelChoice} onValueChange={(v) => setModelChoice(v as ModelChoice)}>
+            <Select value={modelChoice} onValueChange={(v) => setModelChoice(v as ModelChoice)} disabled={uploading}>
               <SelectTrigger><SelectValue placeholder="Select a model" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="V3 Fast">V3 Fast (cheaper)</SelectItem>
@@ -204,7 +225,7 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
 
           <div className="space-y-2">
             <Label>Aspect Ratio</Label>
-            <Select value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatio)}>
+            <Select value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatio)} disabled={uploading}>
               <SelectTrigger><SelectValue placeholder="Select aspect ratio" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="vertical_9_16">Vertical (9:16)</SelectItem>
@@ -216,7 +237,7 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
 
           <div className="space-y-2">
             <Label>Dialogue</Label>
-            <Select value={dialogueMode} onValueChange={(v) => setDialogueMode(v as DialogueMode)}>
+            <Select value={dialogueMode} onValueChange={(v) => setDialogueMode(v as DialogueMode)} disabled={uploading}>
               <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="generate">Generate for me</SelectItem>
@@ -235,6 +256,7 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
               value={scriptText}
               onChange={(e) => setScriptText(e.target.value)}
               rows={4}
+              disabled={uploading}
             />
           </div>
         )}
@@ -247,6 +269,7 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
               placeholder="e.g., normal and casual looking people, authentic, relatable"
               value={influencerDescription}
               onChange={(e) => setInfluencerDescription(e.target.value)}
+              disabled={uploading}
             />
           </div>
           <div className="space-y-2">
@@ -257,14 +280,15 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
               value={specialRequests}
               onChange={(e) => setSpecialRequests(e.target.value)}
               rows={3}
+              disabled={uploading}
             />
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={handleGenerate}>
+          <Button onClick={handleGenerate} disabled={uploading}>
             <Wand2 className="h-4 w-4 mr-2" />
-            Generate Prompts
+            {uploading ? "Uploading…" : "Generate Prompts"}
           </Button>
           <span className="text-sm text-muted-foreground">
             Next, you can preview and copy the structured scenes below.
