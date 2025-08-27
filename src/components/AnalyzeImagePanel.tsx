@@ -63,7 +63,7 @@ export default function AnalyzeImagePanel({ directImageUrl, onAnalysis }: Props)
       <CardContent className="space-y-4">
         {!canAnalyze ? (
           <p className="text-sm text-muted-foreground">
-            Add any public image URL in the brief (Google Drive share links are also supported). We’ll download and normalize the image automatically.
+            Add a Google Drive share link in the brief first. We’ll convert it to a direct URL automatically.
           </p>
         ) : (
           <div className="flex items-center gap-2">

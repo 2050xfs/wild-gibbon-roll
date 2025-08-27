@@ -36,22 +36,13 @@ function ratioToLabel(r: AspectRatio): { video: "9:16" | "3:4" | "16:9"; image: 
 
 function sanitizeText(s?: string) {
   if (!s) return "";
+  // Rules: avoid m-dashes/hyphens issues, straight quotes, allow ellipses for pauses.
   return s
     .replace(/[“”]/g, '"')
     .replace(/[’]/g, "'")
     .replace(/—/g, " ")
     .replace(/–/g, "-")
     .trim();
-}
-
-function isHttpUrl(s?: string) {
-  if (!s) return false;
-  try {
-    const u = new URL(s);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function buildScenes(brief: CreativeBrief): SceneOutput[] {
@@ -125,12 +116,11 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
     "age 22-40; diverse genders; scenes like person in podcast, person in car, everyday mirror selfie",
   );
 
-  const drive = googleDriveShareToDirect(referenceImageUrl);
-  const effectiveUrl = drive.directUrl || (isHttpUrl(referenceImageUrl) ? referenceImageUrl : undefined);
+  const direct = googleDriveShareToDirect(referenceImageUrl);
 
   const handleGenerate = () => {
-    if (!effectiveUrl) {
-      showError("Please add a public image URL (http/https). Google Drive links are also supported.");
+    if (!referenceImageUrl) {
+      showError("Please add a Google Drive link to your product image.");
       return;
     }
     const brief: CreativeBrief = {
@@ -144,14 +134,14 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
       specialRequests,
     };
     const scenes = buildScenes(brief);
-    onScenesReady?.(brief, scenes, effectiveUrl);
+    onScenesReady?.(brief, scenes, direct.directUrl);
     showSuccess("Generated scene prompts.");
   };
 
   const handleCopyDirect = async () => {
-    if (!effectiveUrl) return;
-    await navigator.clipboard.writeText(effectiveUrl);
-    showSuccess("Image link copied.");
+    if (!direct.directUrl) return;
+    await navigator.clipboard.writeText(direct.directUrl);
+    showSuccess("Direct image link copied.");
   };
 
   return (
@@ -163,26 +153,23 @@ export default function CreativeBriefForm({ onScenesReady }: Props) {
       <CardContent className="space-y-6">
         <div className="grid md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="referenceImageUrl">Reference Image (any public URL or Google Drive share)</Label>
+            <Label htmlFor="referenceImageUrl">Reference Image (Google Drive share link)</Label>
             <Input
               id="referenceImageUrl"
-              placeholder="https://storage.googleapis.com/.../image.jpeg  or  https://drive.google.com/file/d/XXXX/view"
+              placeholder="https://drive.google.com/file/d/XXXX/view?usp=sharing"
               value={referenceImageUrl}
               onChange={(e) => setReferenceImageUrl(e.target.value)}
             />
-            {effectiveUrl ? (
-              <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary">
-                  {drive.directUrl ? "Converted Google Drive link" : "Using provided URL"}
-                </Badge>
+            {direct.directUrl ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Badge variant="secondary">Direct Link Ready</Badge>
                 <Button variant="ghost" size="sm" onClick={handleCopyDirect} className="h-7 px-2">
-                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy link
+                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy direct link
                 </Button>
-                <span className="truncate max-w-full">{effectiveUrl}</span>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Paste any publicly accessible image link. For Google Drive, set sharing to “Anyone with the link”.
+                Share your Drive image “Anyone with the link”. We’ll convert it to a direct URL.
               </p>
             )}
           </div>
