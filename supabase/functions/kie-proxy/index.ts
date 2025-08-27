@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 type ProxyRequest = {
-  path: string; // e.g. "/v1/veo3/videos" (use exact path from https://docs.kie.ai/)
+  path?: string; // e.g. "/api/v1/veo/generate"
   method?: "GET" | "POST";
   body?: unknown;
 };
@@ -17,6 +17,8 @@ function sanitizeBase(url?: string | null) {
   if (!url) return "";
   return url.replace(/\/+$/, ""); // trim trailing slashes
 }
+
+const DEFAULT_KIE_PATH = "/api/v1/veo/generate";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -50,7 +52,8 @@ serve(async (req) => {
     });
   }
 
-  const path = payload.path || "";
+  // Use default path if not provided
+  const path = payload.path || DEFAULT_KIE_PATH;
   if (!path.startsWith("/") || path.includes("://")) {
     return new Response(JSON.stringify({ error: "Invalid path" }), {
       status: 400,
@@ -60,6 +63,10 @@ serve(async (req) => {
 
   const method = payload.method ?? "POST";
   const url = `${baseUrl}${path}`;
+
+  // Log for debugging
+  // console.log("KIE Proxy Upstream URL:", url);
+  // console.log("Request body:", JSON.stringify(payload.body ?? {}));
 
   const upstream = await fetch(url, {
     method,
