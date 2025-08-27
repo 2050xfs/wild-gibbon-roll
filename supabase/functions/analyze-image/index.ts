@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
+import { encode as encodeBase64 } from "https://deno.land/std@0.190.0/encoding/base64.ts"
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +15,13 @@ type Analysis = {
   font_style?: string | null;
   visual_description?: string | null;
 };
+
+function normalizeMime(ct?: string | null): string | null {
+  if (!ct) return null;
+  const base = ct.split(";")[0].trim().toLowerCase();
+  if (base === "image/jpg") return "image/jpeg";
+  return base;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -52,6 +61,56 @@ serve(async (req) => {
     });
   }
 
+  // Step 1: Download the image
+  const upstream = await fetch(imageUrl);
+  if (!upstream.ok) {
+    const details = await upstream.text().catch(() => "");
+    return new Response(
+      JSON.stringify({ error: "Failed to fetch image", status: upstream.status, details }),
+      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const contentType = normalizeMime(upstream.headers.get("content-type"));
+  const buf = new Uint8Array(await upstream.arrayBuffer());
+  if (!buf.length) {
+    return new Response(JSON.stringify({ error: "Downloaded image is empty" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Step 2: Always decode the bytes to an image and re-encode as PNG.
+  // This guarantees OpenAI sees a supported format regardless of the source.
+  let pngBytes: Uint8Array;
+  try {
+    const img = await Image.decode(buf);
+    // Optional: downscale very large images (commented to keep simple)
+    // const MAX = 2048;
+    // if (img.width > MAX || img.height > MAX) {
+    //   const ratio = Math.min(MAX / img.width, MAX / img.height);
+    //   const w = Math.max(1, Math.round(img.width * ratio));
+    //   const h = Math.max(1, Math.round(img.height * ratio));
+    //   img.resize(w, h);
+    // }
+    pngBytes = await img.encode(); // PNG by default
+  } catch (_e) {
+    // If decode failed, the fetched content wasn't a valid image (often HTML from Drive).
+    return new Response(
+      JSON.stringify({
+        error: "Fetched content is not a valid image (could not decode).",
+        hint: "Ensure the link is a direct file URL accessible without cookies (Drive 'Anyone with the link' + direct download link).",
+        received_content_type: contentType || "unknown",
+        bytes: buf.length,
+      }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Step 3: Convert to data URL for OpenAI
+  const base64 = encodeBase64(pngBytes);
+  const dataUrl = `data:image/png;base64,${base64}`;
+
   const systemPrompt =
     "You are a precise visual brand analyst. Return concise JSON only, no extra text.";
 
@@ -71,7 +130,7 @@ Do not include any keys other than these four.`;
         role: "user",
         content: [
           { type: "text", text: userPrompt },
-          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "image_url", image_url: { url: dataUrl } },
         ],
       },
     ],
