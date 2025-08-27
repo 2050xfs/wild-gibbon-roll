@@ -100,9 +100,17 @@ export default function VideoTaskManager() {
     setDeleteId(null);
   };
 
-  // Split tasks
-  const pendingTasks = tasks.filter(t => t.status !== "ready");
-  const readyTasks = tasks.filter(t => t.status === "ready");
+  // Robust filter for ready tasks (case-insensitive, trims whitespace)
+  const readyTasks = tasks.filter(
+    t =>
+      typeof t.status === "string" &&
+      t.status.trim().toLowerCase() === "ready"
+  );
+  const pendingTasks = tasks.filter(
+    t =>
+      typeof t.status !== "string" ||
+      t.status.trim().toLowerCase() !== "ready"
+  );
 
   return (
     <Card className="w-full">
@@ -196,6 +204,10 @@ export default function VideoTaskManager() {
               Refresh Results
             </Button>
           </div>
+          {/* Debug output for readyTasks */}
+          <pre className="text-xs bg-muted p-2 rounded mb-2 overflow-x-auto">
+            {JSON.stringify(readyTasks, null, 2)}
+          </pre>
           {loading ? (
             <div>Loading...</div>
           ) : readyTasks.length === 0 ? (
