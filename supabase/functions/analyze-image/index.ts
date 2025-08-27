@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 
 const corsHeaders = {
@@ -102,7 +103,6 @@ Do not include any keys other than these four.`;
   try {
     parsed = content ? JSON.parse(content) : null;
   } catch {
-    // If parsing fails, make a best-effort fallback
     parsed = null;
   }
 
