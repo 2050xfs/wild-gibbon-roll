@@ -13,6 +13,9 @@ const KIE_KEY = Deno.env.get("KIEAI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
+// Use a fixed user_id for all tasks (for personal use)
+const FIXED_USER_ID = "00000000-0000-0000-0000-000000000000";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -29,9 +32,6 @@ serve(async (req) => {
   }
 
   const { prompt, model, aspectRatio, imageUrls } = body;
-  const authHeader = req.headers.get("authorization") || "";
-  const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer /, ""));
-  if (!user) return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401, headers: corsHeaders });
 
   // Call KIE AI
   const kieRes = await fetch(`${KIE_BASE}/api/v1/veo/generate`, {
@@ -53,11 +53,11 @@ serve(async (req) => {
   }
   const taskId = kieData.data.taskId;
 
-  // Store in DB
+  // Store in DB with fixed user_id
   const { error } = await supabase
     .from("video_tasks")
     .insert([{
-      user_id: user.id,
+      user_id: FIXED_USER_ID,
       prompt,
       model,
       aspect_ratio: aspectRatio,

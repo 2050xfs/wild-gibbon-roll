@@ -21,19 +21,10 @@ serve(async (req) => {
   }
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  const authHeader = req.headers.get("authorization") || "";
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "No Authorization header sent. User must be logged in." }), { status: 401, headers: corsHeaders });
-  }
-  const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.replace(/^Bearer /, ""));
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Not authenticated", details: userError }), { status: 401, headers: corsHeaders });
-  }
-
+  // Return all tasks (for personal use)
   const { data, error } = await supabase
     .from("video_tasks")
     .select("*")
-    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
   if (error) return new Response(JSON.stringify({ error: "DB error", details: error }), { status: 500, headers: corsHeaders });
 
