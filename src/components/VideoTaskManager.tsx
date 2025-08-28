@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
-import { Trash2, RefreshCw, Search } from "lucide-react";
+import { Trash2, RefreshCw } from "lucide-react";
 
 type VideoTask = {
   id: string;
@@ -28,12 +28,6 @@ type VideoTask = {
   created_at: string;
 };
 
-type KieStatus = {
-  taskId: string;
-  kie: any;
-  supabase: VideoTask | null;
-};
-
 const POLL_INTERVAL = 10000; // 10 seconds
 
 export default function VideoTaskManager() {
@@ -43,16 +37,11 @@ export default function VideoTaskManager() {
   const [imageUrl, setImageUrl] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [tasks, setTasks] = React.useState<VideoTask[]>([]);
-  const [kieStatuses, setKieStatuses] = React.useState<KieStatus[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
-  // Manual KIE status check
-  const [manualTaskId, setManualTaskId] = React.useState("");
-  const [manualKieStatus, setManualKieStatus] = React.useState<KieStatus | null>(null);
-
-  // Fetch tasks from Supabase
+  // Fetch tasks
   const fetchTasks = React.useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("get-user-tasks", { body: {} });
@@ -64,42 +53,6 @@ export default function VideoTaskManager() {
     setTasks(data.tasks || []);
     setLoading(false);
   }, []);
-
-  // Fetch live KIE status for all known taskIds
-  const fetchKieStatuses = React.useCallback(async (taskIds: string[]) => {
-    if (!taskIds.length) {
-      setKieStatuses([]);
-      return;
-    }
-    try {
-      const { data, error } = await supabase.functions.invoke("get-kie-task-status", { body: { taskIds } });
-      if (error) {
-        showError("Failed to fetch KIE status");
-        setKieStatuses([]);
-        return;
-      }
-      setKieStatuses(data.results || []);
-    } catch (e: any) {
-      showError(e?.message || "Failed to fetch KIE status");
-      setKieStatuses([]);
-    }
-  }, []);
-
-  // Manual KIE status check
-  const handleManualKieCheck = async () => {
-    if (!manualTaskId.trim()) return;
-    setManualKieStatus(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("get-kie-task-status", { body: { taskIds: [manualTaskId.trim()] } });
-      if (error) {
-        showError("Failed to fetch KIE status");
-        return;
-      }
-      setManualKieStatus((data.results && data.results[0]) || null);
-    } catch (e: any) {
-      showError(e?.message || "Failed to fetch KIE status");
-    }
-  };
 
   // Manual refresh for results
   const handleManualRefresh = async () => {
@@ -115,13 +68,6 @@ export default function VideoTaskManager() {
     const interval = setInterval(fetchTasks, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchTasks]);
-
-  // Fetch KIE status whenever tasks change
-  React.useEffect(() => {
-    const taskIds = tasks.map(t => t.task_id).filter(Boolean);
-    fetchKieStatuses(taskIds);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks.length]);
 
   // Submit new task
   const handleSubmit = async (e: React.FormEvent) => {
@@ -162,25 +108,29 @@ export default function VideoTaskManager() {
     setDeleteId(null);
   };
 
-  // Helper: get readable KIE status
-  function getKieStatusInfo(kie: any) {
-    if (!kie || !kie.data) return { status: "Unknown", credits: null, time: null, resultUrls: [] };
-    const { successFlag, creditsConsumed, createTime, resultUrls } = kie.data;
-    let status = "Unknown";
-    if (successFlag === 0) status = "Processing";
-    else if (successFlag === 1) status = "Success";
-    else if (successFlag === 2 || successFlag === 3) status = "Failed";
-    let urls: string[] = [];
-    try { if (resultUrls) urls = JSON.parse(resultUrls); } catch {}
-    return { status, credits: creditsConsumed, time: createTime, resultUrls: urls };
-  }
+  // Robust filter for ready tasks (case-insensitive, trims whitespace)
+  const readyTasks = tasks.filter(
+    t =>
+      typeof t.status === "string" &&
+      t.status.trim().toLowerCase() === "ready"
+  );
+  const pendingTasks = tasks.filter(
+    t =>
+      typeof t.status !== "string" ||
+      t.status.trim().toLowerCase() !== "ready"
+  );
 
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Generate VEO3 Video (Async, Live KIE Status)</CardTitle>
+        <CardTitle>Generate VEO3 Video (Async)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Debug output for all tasks */}
+        <pre className="text-xs bg-muted p-2 rounded mb-2 overflow-x-auto">
+          {JSON.stringify(tasks, null, 2)}
+        </pre>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <Textarea
             placeholder="Prompt for your video..."
@@ -217,28 +167,10 @@ export default function VideoTaskManager() {
         </form>
         <Separator />
 
-        {/* Manual KIE status check */}
-        <div className="flex items-center gap-2 mb-4">
-          <Input
-            placeholder="Enter KIE taskId to check status"
-            value={manualTaskId}
-            onChange={e => setManualTaskId(e.target.value)}
-            className="max-w-xs"
-          />
-          <Button variant="secondary" size="sm" onClick={handleManualKieCheck}>
-            <Search className="h-4 w-4 mr-1" /> Check KIE Status
-          </Button>
-        </div>
-        {manualKieStatus && (
-          <div className="mb-4 p-2 border rounded bg-muted">
-            <div className="font-semibold">Manual KIE Status for {manualKieStatus.taskId}</div>
-            <pre className="text-xs">{JSON.stringify(manualKieStatus, null, 2)}</pre>
-          </div>
-        )}
-
+        {/* Pending/Processing Tasks */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold">All Generations (Live KIE Status)</h3>
+            <h3 className="font-semibold">Pending/Processing Tasks</h3>
             <Button
               variant="outline"
               size="sm"
@@ -251,75 +183,100 @@ export default function VideoTaskManager() {
               Refresh Results
             </Button>
           </div>
-          {/* Debug output for all taskIds and KIE statuses */}
-          <pre className="text-xs bg-muted p-2 rounded mb-2 overflow-x-auto">
-            {JSON.stringify({
-              taskIds: tasks.map(t => t.task_id),
-              kieStatuses
-            }, null, 2)}
-          </pre>
           {loading ? (
             <div>Loading...</div>
-          ) : kieStatuses.length === 0 ? (
-            <div>No generations yet.</div>
+          ) : pendingTasks.length === 0 ? (
+            <div>No pending tasks.</div>
           ) : (
             <div className="space-y-4">
-              {kieStatuses.map(({ taskId, kie, supabase }) => {
-                const { status, credits, time, resultUrls } = getKieStatusInfo(kie);
-                return (
-                  <div key={taskId} className="p-3 border rounded relative">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                      <div>
-                        <div className="font-medium">Task ID: {taskId}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Status: {status}
-                          {credits !== null && <> • Credits: {credits}</>}
-                          {time && <> • Time: {new Date(time).toLocaleString()}</>}
-                        </div>
-                        {resultUrls.length > 0 && (
-                          <div className="text-xs text-muted-foreground break-all">
-                            KIE AI Result: <a href={resultUrls[0]} target="_blank" rel="noopener noreferrer" className="underline">Original Video Link</a>
-                          </div>
-                        )}
-                        {supabase?.video_url && (
-                          <div className="text-xs text-muted-foreground break-all">
-                            Supabase Video: <a href={supabase.video_url} target="_blank" rel="noopener noreferrer" className="underline">View/Download</a>
-                          </div>
-                        )}
-                        {supabase?.prompt && (
-                          <div className="text-xs text-muted-foreground">Prompt: {supabase.prompt}</div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {supabase?.id && (
-                          <AlertDialog open={deleteId === supabase.id} onOpenChange={open => setDeleteId(open ? supabase.id : null)}>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon" className="h-8 w-8" aria-label="Delete video">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete this video?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. Are you sure you want to permanently delete this video?
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(supabase.id!)}>Delete</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
+              {pendingTasks.map(task => (
+                <div key={task.id} className="p-3 border rounded">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{task.prompt || <span className="italic text-muted-foreground">No prompt</span>}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {task.model} • {task.aspect_ratio} • {task.created_at ? task.created_at.slice(0, 19).replace("T", " ") : ""}
                       </div>
                     </div>
-                    {supabase?.video_url && (
-                      <video src={supabase.video_url} controls className="mt-2 w-full max-w-md rounded" />
-                    )}
+                    <div>
+                      {typeof task.status === "string" && task.status.trim().toLowerCase() === "pending" && (
+                        <span className="text-yellow-600 font-semibold">Processing…</span>
+                      )}
+                      {typeof task.status === "string" && task.status.trim().toLowerCase() === "failed" && (
+                        <span className="text-red-600 font-semibold">Failed</span>
+                      )}
+                    </div>
                   </div>
-                );
-              })}
+                  {typeof task.status === "string" && task.status.trim().toLowerCase() === "failed" && (
+                    <div className="text-xs text-destructive mt-2">{task.error || "Unknown error"}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Ready/Completed Videos */}
+        <div>
+          <h3 className="font-semibold mb-2">Results Ready</h3>
+          {loading ? (
+            <div>Loading...</div>
+          ) : readyTasks.length === 0 ? (
+            <div>No completed videos yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {readyTasks.map(task => (
+                <div key={task.id} className="p-3 border rounded relative">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{task.prompt || <span className="italic text-muted-foreground">No prompt</span>}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Model: {task.model} • Aspect: {task.aspect_ratio} • Created: {task.created_at ? task.created_at.slice(0, 19).replace("T", " ") : ""}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        <span>Task ID: {task.task_id}</span>
+                        {task.kie_ai_credits !== undefined && (
+                          <> • Credits: {task.kie_ai_credits}</>
+                        )}
+                        {task.kie_ai_time && (
+                          <> • Time: {new Date(task.kie_ai_time).toLocaleString()}</>
+                        )}
+                      </div>
+                      {task.kie_ai_result_url && (
+                        <div className="text-xs text-muted-foreground break-all">
+                          KIE AI Result: <a href={task.kie_ai_result_url} target="_blank" rel="noopener noreferrer" className="underline">Original Video Link</a>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <AlertDialog open={deleteId === task.id} onOpenChange={open => setDeleteId(open ? task.id : null)}>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="icon" className="h-8 w-8" aria-label="Delete video">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete this video?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. Are you sure you want to permanently delete this video?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(task.id)}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                  {task.video_url && (
+                    <video src={task.video_url} controls className="mt-2 w-full max-w-md rounded" />
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
