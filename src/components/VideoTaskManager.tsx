@@ -28,6 +28,11 @@ type VideoTask = {
   created_at: string;
 };
 
+type KieStatus = {
+  taskId: string;
+  kie: any;
+};
+
 const POLL_INTERVAL = 10000; // 10 seconds
 
 export default function VideoTaskManager() {
@@ -37,11 +42,12 @@ export default function VideoTaskManager() {
   const [imageUrl, setImageUrl] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [tasks, setTasks] = React.useState<VideoTask[]>([]);
+  const [kieStatuses, setKieStatuses] = React.useState<Record<string, KieStatus>>({});
   const [loading, setLoading] = React.useState(true);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
-  // Fetch tasks
+  // Fetch tasks from Supabase
   const fetchTasks = React.useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("get-user-tasks", { body: {} });
@@ -52,6 +58,30 @@ export default function VideoTaskManager() {
     }
     setTasks(data.tasks || []);
     setLoading(false);
+  }, []);
+
+  // Fetch live KIE status for all known taskIds
+  const fetchKieStatuses = React.useCallback(async (taskIds: string[]) => {
+    if (!taskIds.length) {
+      setKieStatuses({});
+      return;
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke("get-kie-task-status", { body: { taskIds } });
+      if (error) {
+        showError("Failed to fetch KIE status");
+        setKieStatuses({});
+        return;
+      }
+      const statusMap: Record<string, KieStatus> = {};
+      (data.results || []).forEach((res: KieStatus) => {
+        statusMap[res.taskId] = res;
+      });
+      setKieStatuses(statusMap);
+    } catch (e: any) {
+      showError(e?.message || "Failed to fetch KIE status");
+      setKieStatuses({});
+    }
   }, []);
 
   // Manual refresh for results
@@ -68,6 +98,13 @@ export default function VideoTaskManager() {
     const interval = setInterval(fetchTasks, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchTasks]);
+
+  // Fetch KIE status whenever tasks change
+  React.useEffect(() => {
+    const taskIds = tasks.map(t => t.task_id).filter(Boolean);
+    fetchKieStatuses(taskIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks.length]);
 
   // Submit new task
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,6 +145,19 @@ export default function VideoTaskManager() {
     setDeleteId(null);
   };
 
+  // Helper: get readable KIE status
+  function getKieStatusInfo(kie: any) {
+    if (!kie || !kie.data) return { status: "Unknown", credits: null, time: null, resultUrls: [] };
+    const { successFlag, creditsConsumed, createTime, resultUrls } = kie.data;
+    let status = "Unknown";
+    if (successFlag === 0) status = "Processing";
+    else if (successFlag === 1) status = "Success";
+    else if (successFlag === 2 || successFlag === 3) status = "Failed";
+    let urls: string[] = [];
+    try { if (resultUrls) urls = JSON.parse(resultUrls); } catch {}
+    return { status, credits: creditsConsumed, time: createTime, resultUrls: urls };
+  }
+
   // Robust filter for ready tasks (case-insensitive, trims whitespace)
   const readyTasks = tasks.filter(
     t =>
@@ -123,7 +173,7 @@ export default function VideoTaskManager() {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Generate VEO3 Video (Async)</CardTitle>
+        <CardTitle>Generate VEO3 Video (Async, Modular)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Debug output for all tasks */}
@@ -189,29 +239,43 @@ export default function VideoTaskManager() {
             <div>No pending tasks.</div>
           ) : (
             <div className="space-y-4">
-              {pendingTasks.map(task => (
-                <div key={task.id} className="p-3 border rounded">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{task.prompt || <span className="italic text-muted-foreground">No prompt</span>}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {task.model} • {task.aspect_ratio} • {task.created_at ? task.created_at.slice(0, 19).replace("T", " ") : ""}
+              {pendingTasks.map(task => {
+                const kieStatus = kieStatuses[task.task_id];
+                const { status, credits, time, resultUrls } = getKieStatusInfo(kieStatus?.kie);
+                return (
+                  <div key={task.id} className="p-3 border rounded">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{task.prompt || <span className="italic text-muted-foreground">No prompt</span>}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {task.model} • {task.aspect_ratio} • {task.created_at ? task.created_at.slice(0, 19).replace("T", " ") : ""}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          KIE Status: {status}
+                          {credits !== null && <> • Credits: {credits}</>}
+                          {time && <> • Time: {new Date(time).toLocaleString()}</>}
+                        </div>
+                        {resultUrls.length > 0 && (
+                          <div className="text-xs text-muted-foreground break-all">
+                            KIE AI Result: <a href={resultUrls[0]} target="_blank" rel="noopener noreferrer" className="underline">Original Video Link</a>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        {typeof task.status === "string" && task.status.trim().toLowerCase() === "pending" && (
+                          <span className="text-yellow-600 font-semibold">Processing…</span>
+                        )}
+                        {typeof task.status === "string" && task.status.trim().toLowerCase() === "failed" && (
+                          <span className="text-red-600 font-semibold">Failed</span>
+                        )}
                       </div>
                     </div>
-                    <div>
-                      {typeof task.status === "string" && task.status.trim().toLowerCase() === "pending" && (
-                        <span className="text-yellow-600 font-semibold">Processing…</span>
-                      )}
-                      {typeof task.status === "string" && task.status.trim().toLowerCase() === "failed" && (
-                        <span className="text-red-600 font-semibold">Failed</span>
-                      )}
-                    </div>
+                    {typeof task.status === "string" && task.status.trim().toLowerCase() === "failed" && (
+                      <div className="text-xs text-destructive mt-2">{task.error || "Unknown error"}</div>
+                    )}
                   </div>
-                  {typeof task.status === "string" && task.status.trim().toLowerCase() === "failed" && (
-                    <div className="text-xs text-destructive mt-2">{task.error || "Unknown error"}</div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -227,56 +291,61 @@ export default function VideoTaskManager() {
             <div>No completed videos yet.</div>
           ) : (
             <div className="space-y-4">
-              {readyTasks.map(task => (
-                <div key={task.id} className="p-3 border rounded relative">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{task.prompt || <span className="italic text-muted-foreground">No prompt</span>}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Model: {task.model} • Aspect: {task.aspect_ratio} • Created: {task.created_at ? task.created_at.slice(0, 19).replace("T", " ") : ""}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        <span>Task ID: {task.task_id}</span>
-                        {task.kie_ai_credits !== undefined && (
-                          <> • Credits: {task.kie_ai_credits}</>
-                        )}
-                        {task.kie_ai_time && (
-                          <> • Time: {new Date(task.kie_ai_time).toLocaleString()}</>
-                        )}
-                      </div>
-                      {task.kie_ai_result_url && (
-                        <div className="text-xs text-muted-foreground break-all">
-                          KIE AI Result: <a href={task.kie_ai_result_url} target="_blank" rel="noopener noreferrer" className="underline">Original Video Link</a>
+              {readyTasks.map(task => {
+                const kieStatus = kieStatuses[task.task_id];
+                const { status, credits, time, resultUrls } = getKieStatusInfo(kieStatus?.kie);
+                return (
+                  <div key={task.id} className="p-3 border rounded relative">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                      <div>
+                        <div className="font-medium">{task.prompt || <span className="italic text-muted-foreground">No prompt</span>}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Model: {task.model} • Aspect: {task.aspect_ratio} • Created: {task.created_at ? task.created_at.slice(0, 19).replace("T", " ") : ""}
                         </div>
-                      )}
+                        <div className="text-xs text-muted-foreground">
+                          <span>Task ID: {task.task_id}</span>
+                          {credits !== null && <> • Credits: {credits}</>}
+                          {time && <> • Time: {new Date(time).toLocaleString()}</>}
+                        </div>
+                        {resultUrls.length > 0 && (
+                          <div className="text-xs text-muted-foreground break-all">
+                            KIE AI Result: <a href={resultUrls[0]} target="_blank" rel="noopener noreferrer" className="underline">Original Video Link</a>
+                          </div>
+                        )}
+                        {task.video_url && (
+                          <div className="text-xs text-muted-foreground break-all">
+                            Supabase Video: <a href={task.video_url} target="_blank" rel="noopener noreferrer" className="underline">View/Download</a>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <AlertDialog open={deleteId === task.id} onOpenChange={open => setDeleteId(open ? task.id : null)}>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" className="h-8 w-8" aria-label="Delete video">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this video?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. Are you sure you want to permanently delete this video?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(task.id)}>Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <AlertDialog open={deleteId === task.id} onOpenChange={open => setDeleteId(open ? task.id : null)}>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="icon" className="h-8 w-8" aria-label="Delete video">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this video?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. Are you sure you want to permanently delete this video?
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(task.id)}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                    {task.video_url && (
+                      <video src={task.video_url} controls className="mt-2 w-full max-w-md rounded" />
+                    )}
                   </div>
-                  {task.video_url && (
-                    <video src={task.video_url} controls className="mt-2 w-full max-w-md rounded" />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
