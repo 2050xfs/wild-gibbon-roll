@@ -6,10 +6,7 @@ import CreativeBriefForm from "@/components/CreativeBriefForm";
 import PromptPreview from "@/components/PromptPreview";
 import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
 import KieConsole from "@/components/KieConsole";
-import VideoTaskManager from "@/components/VideoTaskManager";
-import ManualTaskIdEntry from "@/components/ManualTaskIdEntry";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type ImageAnalysis = {
   brand_name?: string | null;
@@ -23,10 +20,9 @@ const Index = () => {
   const [scenes, setScenes] = React.useState<SceneOutput[] | undefined>(undefined);
   const [directImageUrl, setDirectImageUrl] = React.useState<string | undefined>(undefined);
   const [analysis, setAnalysis] = React.useState<ImageAnalysis | null | undefined>(undefined);
+  const [showKie, setShowKie] = React.useState(false);
 
   const hasDirectImage = !!directImageUrl;
-
-  // Prefill a reasonable KIE request body template from Scene 1
   const firstScene = scenes?.[0];
   const kieTemplate = firstScene && directImageUrl
     ? {
@@ -39,24 +35,16 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-muted/10">
-      <div className="container mx-auto py-8 space-y-6">
+      <div className="container mx-auto py-8 space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl md:text-4xl font-bold">Infinite UGC Prompt Factory</h1>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
-            Generate structured image/video prompts for automated UGC creation. Plug these into your n8n workflow.
+          <h1 className="text-4xl font-bold">Infinite UGC Ad Generator</h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Instantly generate unlimited UGC-style ads for any product or brand—completely on autopilot.
           </p>
         </div>
 
-        <Alert>
-          <AlertTitle>Next step: Backend for media generation</AlertTitle>
-          <AlertDescription>
-            You can now analyze your product image (Step 2). To fully automate Steps 5–11 (image/video generation + uploads), we’ll add secure functions next.
-          </AlertDescription>
-        </Alert>
-
-        <ManualTaskIdEntry />
-
-        <div className="grid gap-6">
+        <div className="max-w-2xl mx-auto space-y-6">
+          {/* Step 1: Product/Brand Brief */}
           <CreativeBriefForm
             onScenesReady={(b, s, direct) => {
               setBrief(b);
@@ -66,8 +54,10 @@ const Index = () => {
             }}
           />
 
+          {/* Step 2: Preview & Export */}
           <PromptPreview brief={brief} scenes={scenes} directImageUrl={directImageUrl} analysis={analysis ?? null} />
 
+          {/* Step 3: (Optional) Analyze Image */}
           {hasDirectImage && (
             <AnalyzeImagePanel
               directImageUrl={directImageUrl}
@@ -75,15 +65,26 @@ const Index = () => {
             />
           )}
 
-          <KieConsole
-            defaultPath="/api/v1/veo/generate"
-            defaultMethod="POST"
-            defaultBody={kieTemplate}
-            title="KIE AI Proxy — Live Test"
-            description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
-          />
-
-          <VideoTaskManager />
+          {/* Step 4: (Optional) Test with KIE AI */}
+          {firstScene && directImageUrl && (
+            <div className="text-right">
+              <button
+                className="text-xs text-blue-600 underline mb-2"
+                onClick={() => setShowKie((v) => !v)}
+              >
+                {showKie ? "Hide" : "Test with KIE AI (advanced)"}
+              </button>
+              {showKie && (
+                <KieConsole
+                  defaultPath="/api/v1/veo/generate"
+                  defaultMethod="POST"
+                  defaultBody={kieTemplate}
+                  title="KIE AI Proxy — Live Test"
+                  description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
+                />
+              )}
+            </div>
+          )}
         </div>
 
         <MadeWithDyad />
