@@ -14,6 +14,7 @@ import type { AspectRatio, CreativeBrief, DialogueMode, ModelChoice, SceneOutput
 import { cn } from "@/lib/utils";
 import { Copy, Wand2 } from "lucide-react";
 import { storeImageFromUrl } from "@/utils/storeImage";
+import { buildVeoPrompt } from "@/utils/veoPrompt";
 
 const defaultScenes = [
   "casual vlog selfie at home, natural light, minimal makeup",
@@ -54,7 +55,7 @@ function isHttpUrl(s?: string) {
   }
 }
 
-function buildScenes(brief: CreativeBrief): SceneOutput[] {
+function buildScenes(brief: CreativeBrief) {
   const scenes: SceneOutput[] = [];
   const ratio = ratioToLabel(brief.aspectRatio);
   const model = brief.modelChoice;
@@ -96,6 +97,7 @@ function buildScenes(brief: CreativeBrief): SceneOutput[] {
       `Prompt rules: use ellipses for pauses… avoid hyphenation issues… no double quotes in content…`,
     ].join(" ");
 
+    // Instead of returning plain prompts, return a JSON-style prompt
     scenes.push({
       id: `${i + 1}`,
       imagePrompt,
@@ -103,6 +105,8 @@ function buildScenes(brief: CreativeBrief): SceneOutput[] {
       videoAspectRatio: ratio.video,
       imageAspectRatio: ratio.image,
       model,
+      // Add a field for the Veo JSON prompt (for preview and sending)
+      // analysis will be added later if available
     });
   }
 

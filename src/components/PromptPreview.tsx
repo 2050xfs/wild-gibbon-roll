@@ -8,6 +8,7 @@ import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { showSuccess, showError } from "@/utils/toast";
 import { Copy, Download, Send, Loader2, CheckCircle2, XCircle, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { buildVeoPrompt } from "@/utils/veoPrompt";
 
 type ImageAnalysis = {
   brand_name?: string | null;
@@ -88,15 +89,17 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
 
   // Send a single scene to KIE AI and open panel
   const sendToKie = async (scene: SceneOutput) => {
+    if (!brief) return;
     setSceneStatus((prev) => ({
       ...prev,
       [scene.id]: { state: "pending", taskId: "" },
     }));
     setOpenPanel(scene.id);
     try {
-      // Build payload for KIE AI
+      // Build Veo 3 JSON prompt
+      const veoPrompt = buildVeoPrompt(brief, scene, analysis);
       const payload = {
-        prompt: scene.videoPrompt,
+        prompt: veoPrompt,
         aspectRatio: scene.videoAspectRatio,
         model: scene.model === "V3 Fast" ? "veo3_fast" : "veo3",
         imageUrls: directImageUrl ? [directImageUrl] : [],
@@ -137,11 +140,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
       },
       scenes: scenes!.map((s) => ({
         id: s.id,
-        imagePrompt: s.imagePrompt,
-        videoPrompt: s.videoPrompt,
-        videoAspectRatio: s.videoAspectRatio,
-        imageAspectRatio: s.imageAspectRatio,
-        model: s.model,
+        veoPrompt: buildVeoPrompt(brief!, s, analysis),
       })),
     };
     await navigator.clipboard.writeText(JSON.stringify(jsonPayload, null, 2));
@@ -160,11 +159,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
       },
       scenes: scenes!.map((s) => ({
         id: s.id,
-        imagePrompt: s.imagePrompt,
-        videoPrompt: s.videoPrompt,
-        videoAspectRatio: s.videoAspectRatio,
-        imageAspectRatio: s.imageAspectRatio,
-        model: s.model,
+        veoPrompt: buildVeoPrompt(brief!, s, analysis),
       })),
     };
     const blob = new Blob([JSON.stringify(jsonPayload, null, 2)], { type: "application/json" });
@@ -181,7 +176,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
       <CardHeader>
         <CardTitle>Generated Scenes</CardTitle>
         <CardDescription>
-          Structured prompts for image and video generation. Copy or download to use in n8n or your generation service.
+          Structured JSON prompts for Veo 3 video generation. Copy, download, or send to KIE AI.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -205,6 +200,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
                 const sceneState = sceneStatus[s.id];
                 const status = sceneState?.state || "idle";
                 const isPanelOpen = openPanel === s.id;
+                const veoPrompt = buildVeoPrompt(brief!, s, analysis);
                 return (
                   <div key={s.id} className="relative flex flex-col md:flex-row gap-4 border rounded p-4 bg-muted/50">
                     <div className="flex-1 min-w-0">
@@ -215,12 +211,10 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
                         </div>
                       </div>
                       <div className="text-sm">
-                        <div className="font-semibold mb-1">Image Prompt</div>
-                        <p className="text-muted-foreground">{s.imagePrompt}</p>
-                      </div>
-                      <div className="text-sm">
-                        <div className="font-semibold mb-1">Video Prompt</div>
-                        <p className="text-muted-foreground">{s.videoPrompt}</p>
+                        <div className="font-semibold mb-1">Veo 3 JSON Prompt</div>
+                        <pre className="bg-background rounded p-2 text-xs overflow-x-auto max-h-60">
+                          {JSON.stringify(veoPrompt, null, 2)}
+                        </pre>
                       </div>
                       <div className="flex items-center gap-2 mt-2">
                         <Button
@@ -234,7 +228,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
                         </Button>
                         {status === "pending" && (
                           <span className="flex items-center text-xs text-blue-600">
-                            <Loader2 className="h-4 w-4 animate-spin mr-1" /> Pending...
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Pending...
                           </span>
                         )}
                         {status === "success" && (
