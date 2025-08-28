@@ -28,8 +28,21 @@ serve(async (req) => {
   }
 
   const { taskId, prompt, model, aspectRatio } = body;
-  if (!taskId) {
+  if (!taskId || typeof taskId !== "string" || !taskId.trim()) {
     return new Response(JSON.stringify({ error: "taskId is required" }), { status: 400, headers: corsHeaders });
+  }
+
+  // Check for duplicate taskId
+  const { data: existing, error: selectError } = await supabase
+    .from("video_tasks")
+    .select("id")
+    .eq("task_id", taskId)
+    .maybeSingle();
+  if (existing) {
+    return new Response(JSON.stringify({ error: "Task ID already exists in database." }), { status: 409, headers: corsHeaders });
+  }
+  if (selectError) {
+    return new Response(JSON.stringify({ error: "DB select failed", details: selectError }), { status: 500, headers: corsHeaders });
   }
 
   const { error } = await supabase
