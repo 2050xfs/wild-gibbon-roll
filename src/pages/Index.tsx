@@ -7,6 +7,7 @@ import PromptPreview from "@/components/PromptPreview";
 import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
 import KieConsole from "@/components/KieConsole";
 import VideoTaskManager from "@/components/VideoTaskManager";
+import ManualTaskIdEntry from "@/components/ManualTaskIdEntry";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -52,6 +53,8 @@ const Index = () => {
             You can now analyze your product image (Step 2). To fully automate Steps 5–11 (image/video generation + uploads), we’ll add secure functions next.
           </AlertDescription>
         </Alert>
+
+        <ManualTaskIdEntry />
 
         <div className="grid gap-6">
           <CreativeBriefForm
