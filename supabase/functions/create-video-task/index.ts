@@ -12,8 +12,6 @@ const KIE_BASE = (Deno.env.get("KIEAI_BASE_URL") || "").replace(/\/+$/, "");
 const KIE_KEY = Deno.env.get("KIEAI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-// Use a fixed user_id for all tasks (for personal use)
 const FIXED_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 serve(async (req) => {
@@ -53,7 +51,7 @@ serve(async (req) => {
   }
   const taskId = kieData.data.taskId;
 
-  // Store in DB with fixed user_id
+  // Store in DB with status pending
   const { error } = await supabase
     .from("video_tasks")
     .insert([{

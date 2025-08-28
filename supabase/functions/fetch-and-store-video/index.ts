@@ -8,18 +8,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type Body = {
-  file_url: string;           // Direct URL to the generated video file
-  bucket?: string;            // defaults to "ugc-videos"
-  path?: string;              // e.g., "videos/{task_id}.mp4"
-  makePublic?: boolean;       // defaults to true
-  contentType?: string;       // defaults to "video/mp4"
-};
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -31,7 +23,7 @@ serve(async (req) => {
   }
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  let body: Body;
+  let body;
   try {
     body = await req.json();
   } catch {
@@ -46,7 +38,6 @@ serve(async (req) => {
   const bucket = body.bucket || "ugc-videos";
   const makePublic = body.makePublic !== undefined ? !!body.makePublic : true;
   const contentType = body.contentType || "video/mp4";
-
   const defaultName = `videos/${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
   const path = body.path || defaultName;
 
@@ -80,9 +71,7 @@ serve(async (req) => {
     });
   }
 
-  const publicUrl = makePublic
-    ? supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
-    : (await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 7)).data?.signedUrl;
+  const publicUrl = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 
   return new Response(JSON.stringify({
     bucket,

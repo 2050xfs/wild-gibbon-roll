@@ -21,7 +21,6 @@ serve(async (req) => {
   }
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // Return all tasks (for personal use)
   const { data, error } = await supabase
     .from("video_tasks")
     .select("*")
