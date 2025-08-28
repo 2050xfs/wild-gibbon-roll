@@ -7,16 +7,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const KIE_BASE = (Deno.env.get("KIEAI_BASE_URL") || "").replace(/\/+$/, "");
-const KIE_KEY = Deno.env.get("KIEAI_API_KEY");
+const KIE_API_URL = "https://api.kie.ai/api/v1/veo/record-info";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
-  }
-  if (!KIE_BASE || !KIE_KEY) {
-    return new Response(JSON.stringify({ error: "Missing env vars" }), { status: 500, headers: corsHeaders });
   }
 
   let body;
@@ -33,9 +29,9 @@ serve(async (req) => {
   for (const taskId of taskIds) {
     let kieStatus = null;
     try {
-      const res = await fetch(`${KIE_BASE}/api/v1/veo/record-info?taskId=${taskId}`, {
+      const res = await fetch(`${KIE_API_URL}?taskId=${encodeURIComponent(taskId)}`, {
         method: "GET",
-        headers: { "Authorization": `Bearer ${KIE_KEY}` },
+        // No auth header needed for public endpoint
       });
       kieStatus = await res.json();
     } catch (e) {
