@@ -6,6 +6,8 @@ import CreativeBriefForm from "@/components/CreativeBriefForm";
 import PromptPreview from "@/components/PromptPreview";
 import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
 import KieConsole from "@/components/KieConsole";
+import VideoTaskManager from "@/components/VideoTaskManager";
+import ManualTaskIdEntry from "@/components/ManualTaskIdEntry";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -46,14 +48,13 @@ const Index = () => {
         </div>
 
         <Alert>
-          <AlertTitle>How it works</AlertTitle>
+          <AlertTitle>Next step: Backend for media generation</AlertTitle>
           <AlertDescription>
-            1. Fill out the creative brief.<br />
-            2. Generate and preview your prompts.<br />
-            3. (Optional) Analyze your product image.<br />
-            4. (Optional) Test your prompt with KIE AI.
+            You can now analyze your product image (Step 2). To fully automate Steps 5–11 (image/video generation + uploads), we’ll add secure functions next.
           </AlertDescription>
         </Alert>
+
+        <ManualTaskIdEntry />
 
         <div className="grid gap-6">
           <CreativeBriefForm
@@ -74,15 +75,15 @@ const Index = () => {
             />
           )}
 
-          {firstScene && directImageUrl && (
-            <KieConsole
-              defaultPath="/api/v1/veo/generate"
-              defaultMethod="POST"
-              defaultBody={kieTemplate}
-              title="KIE AI Proxy — Live Test"
-              description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
-            />
-          )}
+          <KieConsole
+            defaultPath="/api/v1/veo/generate"
+            defaultMethod="POST"
+            defaultBody={kieTemplate}
+            title="KIE AI Proxy — Live Test"
+            description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
+          />
+
+          <VideoTaskManager />
         </div>
 
         <MadeWithDyad />
