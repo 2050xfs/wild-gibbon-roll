@@ -9,6 +9,7 @@ import { useUgcStore } from "@/features/ugc/state/ugcStore";
 
 const UgcStudio = () => {
   const { scenes } = useUgcStore();
+  const [stitchOpen, setStitchOpen] = React.useState(false);
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -25,7 +26,7 @@ const UgcStudio = () => {
             <CreativeBrief />
           </div>
           <div className="md:col-span-2 space-y-4">
-            <BatchBar />
+            <BatchBar onStitch={() => setStitchOpen(true)} />
             <div className="grid gap-4">
               {scenes.map((scene) => (
                 <SceneCard key={scene.id} scene={scene} />
@@ -34,7 +35,7 @@ const UgcStudio = () => {
             <OutputsPanel />
           </div>
         </div>
-        <StitchModal />
+        <StitchModal open={stitchOpen} onClose={() => setStitchOpen(false)} />
       </div>
     </div>
   );

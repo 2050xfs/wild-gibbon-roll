@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
 
-const BatchBar = () => {
+const BatchBar = ({ onStitch }: { onStitch?: () => void }) => {
   const scenes = useUgcStore((s) => s.scenes);
   const sceneStatus = useUgcStore((s) => s.sceneStatus);
   const costs = useUgcStore((s) => s.costs);
@@ -23,6 +23,7 @@ const BatchBar = () => {
         className="btn btn-primary"
         disabled={!allReady}
         title={allReady ? "" : "All scenes must be ready"}
+        onClick={allReady && onStitch ? onStitch : undefined}
       >
         Stitch Final Reel
       </button>
