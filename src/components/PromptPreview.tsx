@@ -101,12 +101,12 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
       const payload = {
         prompt: veoPrompt,
         aspectRatio: scene.videoAspectRatio,
-        model: scene.model === "V3 Fast" ? "veo3_fast" : "veo3",
+        model: "veo3_fast", // Always use veo3_fast
         imageUrls: directImageUrl ? [directImageUrl] : [],
       };
       const { data, error } = await supabase.functions.invoke("create-video-task", { body: payload });
 
-      // FIX: If a taskId is returned, treat as success and start polling, even if error is present
+      // If a taskId is returned, treat as success and start polling, even if error is present
       if (data?.taskId) {
         setSceneStatus((prev) => ({
           ...prev,
