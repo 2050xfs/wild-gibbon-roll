@@ -1,12 +1,34 @@
 import * as React from "react";
+import { useUgcStore } from "@/features/ugc/state/ugcStore";
 
 const BatchBar = () => {
-  // Placeholder: implement Download All, Stitch, cost summary
+  const scenes = useUgcStore((s) => s.scenes);
+  const sceneStatus = useUgcStore((s) => s.sceneStatus);
+  const costs = useUgcStore((s) => s.costs);
+
+  const allReady =
+    scenes.length > 0 &&
+    scenes.every((scene) => sceneStatus?.[scene.id] === "ready");
+
   return (
     <div className="flex items-center gap-4 p-3 bg-secondary rounded shadow">
-      <button className="btn btn-primary" disabled>Download All (ZIP)</button>
-      <button className="btn btn-primary" disabled>Stitch Final Reel</button>
-      <span className="ml-auto text-sm text-muted-foreground">Total: $0.00</span>
+      <button
+        className="btn btn-primary"
+        disabled={!allReady}
+        title={allReady ? "" : "All scenes must be ready"}
+      >
+        Download All (ZIP)
+      </button>
+      <button
+        className="btn btn-primary"
+        disabled={!allReady}
+        title={allReady ? "" : "All scenes must be ready"}
+      >
+        Stitch Final Reel
+      </button>
+      <span className="ml-auto text-sm text-muted-foreground">
+        Total: ${((costs?.total ?? 0) / 100).toFixed(2)}
+      </span>
     </div>
   );
 };
