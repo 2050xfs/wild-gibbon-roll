@@ -44,7 +44,7 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
   const pollForResult = React.useCallback(async (sceneId: string, taskId: string) => {
     let attempts = 0;
     let found = false;
-    while (attempts < 30 && !found) {
+    while (attempts < 225 && !found) { // up to 15 min (225*4s)
       attempts++;
       // Call backend to get status for this taskId
       const { data, error } = await supabase.functions.invoke("get-kie-task-status", { body: { taskIds: [taskId] } });
@@ -105,20 +105,24 @@ export default function PromptPreview({ brief, scenes, directImageUrl, analysis 
         imageUrls: directImageUrl ? [directImageUrl] : [],
       };
       const { data, error } = await supabase.functions.invoke("create-video-task", { body: payload });
-      if (error || !data?.taskId) {
+
+      // FIX: If a taskId is returned, treat as success and start polling, even if error is present
+      if (data?.taskId) {
         setSceneStatus((prev) => ({
           ...prev,
-          [scene.id]: { state: "error", error: error?.message || "Failed to send to KIE AI" },
+          [scene.id]: { state: "pending", taskId: data.taskId },
         }));
-        showError(error?.message || "Failed to send to KIE AI");
+        showSuccess("Sent to KIE AI! Generation started.");
+        pollForResult(scene.id, data.taskId);
         return;
       }
+
+      // Only show error if no taskId is returned
       setSceneStatus((prev) => ({
         ...prev,
-        [scene.id]: { state: "pending", taskId: data.taskId },
+        [scene.id]: { state: "error", error: error?.message || "Failed to send to KIE AI" },
       }));
-      showSuccess("Sent to KIE AI! Generation started.");
-      pollForResult(scene.id, data.taskId);
+      showError(error?.message || "Failed to send to KIE AI");
     } catch (e: any) {
       setSceneStatus((prev) => ({
         ...prev,
