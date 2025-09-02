@@ -16,6 +16,9 @@ const StitchModal = ({
 }) => {
   const scenes = useUgcStore((s) => s.scenes);
   const sceneStatus = useUgcStore((s) => s.sceneStatus);
+  const stitchJob = useUgcStore((s) => s.stitchJob);
+  const startStitch = useUgcStore((s) => s.startStitch);
+  const clearStitch = useUgcStore((s) => s.clearStitch);
 
   const readyScenes = scenes.filter(
     (scene) => sceneStatus?.[scene.id] === "ready"
@@ -26,11 +29,32 @@ const StitchModal = ({
   );
   const [transition, setTransition] = React.useState("none");
   const [endCard, setEndCard] = React.useState("");
-  // Drag-and-drop not implemented yet; just a static list for now
+  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     setOrder(readyScenes.map((s) => s.id));
   }, [open, readyScenes.length]);
+
+  React.useEffect(() => {
+    if (!open) clearStitch?.();
+    // eslint-disable-next-line
+  }, [open]);
+
+  const handleStitch = async () => {
+    setSubmitting(true);
+    await startStitch?.({
+      sceneUrls: order.map((id) => {
+        // For demo, use a placeholder video URL
+        // In real app, use actual generated video URLs for each scene
+        return "https://www.w3schools.com/html/mov_bbb.mp4";
+      }),
+      order,
+      transition,
+      aspect: "9:16",
+      endCard: endCard.trim() || undefined,
+    });
+    setSubmitting(false);
+  };
 
   if (!open) return null;
 
@@ -88,20 +112,44 @@ const StitchModal = ({
             onChange={(e) => setEndCard(e.target.value)}
           />
         </div>
+        {stitchJob && (
+          <div className="mb-4">
+            <div className="text-sm">
+              Status: <span className="font-semibold">{stitchJob.status}</span>
+              {stitchJob.status === "failed" && (
+                <span className="text-red-600 ml-2">{stitchJob.error}</span>
+              )}
+            </div>
+            {stitchJob.status === "done" && (
+              <div className="mt-2">
+                <a
+                  href={stitchJob.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 underline"
+                >
+                  Download Final Reel
+                </a>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <button
             className="px-4 py-2 rounded bg-muted"
             onClick={onClose}
             type="button"
+            disabled={submitting}
           >
             Cancel
           </button>
           <button
             className="px-4 py-2 rounded bg-primary text-primary-foreground font-semibold"
-            disabled
+            onClick={handleStitch}
+            disabled={submitting || (stitchJob && stitchJob.status === "done")}
             type="button"
           >
-            Stitch (not implemented)
+            {submitting ? "Stitching..." : "Stitch"}
           </button>
         </div>
       </div>

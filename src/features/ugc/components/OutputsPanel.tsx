@@ -4,6 +4,7 @@ import { useUgcStore } from "@/features/ugc/state/ugcStore";
 const OutputsPanel = () => {
   const scenes = useUgcStore((s) => s.scenes);
   const sceneStatus = useUgcStore((s) => s.sceneStatus);
+  const stitchJob = useUgcStore((s) => s.stitchJob);
 
   const readyScenes = scenes.filter(
     (scene) => sceneStatus?.[scene.id] === "ready"
@@ -38,6 +39,26 @@ const OutputsPanel = () => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {stitchJob && stitchJob.status === "done" && stitchJob.url && (
+        <div className="mt-6 p-4 border rounded bg-muted">
+          <h3 className="font-semibold mb-2">Final Stitched Reel</h3>
+          <video
+            src={stitchJob.url}
+            controls
+            className="w-full max-w-md rounded"
+          />
+          <div className="mt-2">
+            <a
+              href={stitchJob.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              Download Final Reel
+            </a>
+          </div>
         </div>
       )}
     </div>
