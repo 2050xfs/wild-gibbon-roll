@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-// --- Heuristic mappings for MVP ---
 const CATEGORY_SCENES = {
   beverage: [
     "kitchen counter hero shot",
@@ -13,11 +12,9 @@ const CATEGORY_SCENES = {
     "application macro",
     "after-glow/texture"
   ],
-  // Add more categories as needed
 };
 
 function randomPalette() {
-  // Placeholder: in real use, extract from image
   return ["#E93E3E", "#111", "#FDF9F1"];
 }
 
@@ -32,16 +29,15 @@ function compliance(product, vision) {
   return { warnings, disclaimers };
 }
 
-// --- Main handler ---
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
   try {
     const body = await req.json();
-    const { imageUrl, platform, scriptMode, themeHint } = body;
-    if (!imageUrl) throw new Error("imageUrl required");
+    if (!body.imageUrl || typeof body.imageUrl !== "string" || !body.imageUrl.startsWith("http")) {
+      return new Response(JSON.stringify({ error: "imageUrl required and must be a valid URL" }), { status: 400 });
+    }
 
     // 1) Analyze image (mocked for MVP)
-    // In production, call your VLM/OCR here
     const vision = {
       text: ["BrandX", "Zero Sugar", "SPF 30"],
       labels: ["beverage", "can", "kitchen"],
@@ -67,8 +63,8 @@ serve(async (req) => {
       aspect: "9:16",
       numScenes: 3,
       influencer: { appearance: "everyday casual", ageRange: "20-35", genders: "mixed" },
-      themeHint: themeHint || "refreshment",
-      scriptMode: scriptMode || "ai"
+      themeHint: body.themeHint || "refreshment",
+      scriptMode: body.scriptMode || "ai"
     };
 
     // 4) Build Veo JSON scenes (one story continuity)
@@ -78,7 +74,7 @@ serve(async (req) => {
       "scene 3: close-up"
     ];
     const scenes = sceneTemplates.map((desc, idx) => ({
-      description: `Selfie/handheld UGC clip #${idx + 1} from ONE continuous story. Theme: ${creative_brief.themeHint}. Include product as visual anchor: ${imageUrl}. Setting: ${env}.`,
+      description: `Selfie/handheld UGC clip #${idx + 1} from ONE continuous story. Theme: ${creative_brief.themeHint}. Include product as visual anchor: ${body.imageUrl}. Setting: ${env}.`,
       style: "photorealistic cinematic, authentic social video",
       camera: "handheld portrait framing, eye-level, minimal shake",
       lighting: "natural, soft key; keep consistent across scenes",
@@ -110,6 +106,6 @@ serve(async (req) => {
       warnings
     }), { headers: { "content-type": "application/json" }});
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 400 });
+    return new Response(JSON.stringify({ error: "Internal error: " + (e?.message || e) }), { status: 500 });
   }
 });

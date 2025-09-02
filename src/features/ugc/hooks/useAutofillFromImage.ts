@@ -1,6 +1,6 @@
 import * as React from "react";
 
-type CreativeBrief = any; // Replace with your type if available
+type CreativeBrief = any;
 type VeoScene = any;
 
 export function useAutofillFromImage() {
@@ -22,6 +22,10 @@ export function useAutofillFromImage() {
     scriptMode: "ai" | "manual";
     themeHint?: string;
   }) => {
+    if (!imageUrl || !/^https?:\/\//.test(imageUrl)) {
+      setError("Please provide a valid image URL.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setCreativeBrief(null);
