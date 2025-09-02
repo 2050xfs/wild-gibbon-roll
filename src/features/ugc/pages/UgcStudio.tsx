@@ -8,8 +8,9 @@ import StitchModal from "@/features/ugc/components/StitchModal";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
 import { Button } from "@/components/ui/button";
 import PromptPreview from "@/components/PromptPreview";
-import { showError } from "@/utils/toast";
+import { showError, showSuccess } from "@/utils/toast";
 import { useAutofillFromImage } from "../hooks/useAutofillFromImage";
+import AutofillReviewCard from "@/features/ugc/components/AutofillReviewCard";
 
 type ImageAnalysis = {
   brand_name?: string | null;
@@ -28,7 +29,8 @@ const UgcStudio = () => {
   const [analysis, setAnalysis] = React.useState<ImageAnalysis | null>(null);
   const [prompts, setPrompts] = React.useState<any[] | undefined>(undefined);
   const [promptsReady, setPromptsReady] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
+  const [templateVersion, setTemplateVersion] = React.useState<string | undefined>(undefined);
+  const [promptFingerprint, setPromptFingerprint] = React.useState<string | undefined>(undefined);
 
   // Autofill hook
   const {
@@ -53,16 +55,30 @@ const UgcStudio = () => {
   }, [imageUrl]);
 
   // Accept autofill: set brief and scenes for editing/generation
-  const handleAcceptAutofill = () => {
-    if (creativeBrief && autofillScenes) {
-      setBrief(creativeBrief);
-      setPrompts(autofillScenes);
-      setPromptsReady(true);
+  const handleAcceptAutofill = async (editedBrief: any, editedScenes: any[]) => {
+    setBrief(editedBrief);
+    setPrompts(editedScenes);
+    setPromptsReady(true);
+
+    // Save prompt JSON/fingerprint/version in DB (example: save to scene_versions)
+    try {
+      const res = await fetch("/functions/v1/veo-build", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editedBrief,
+          scenes: editedScenes,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save prompt JSON");
+      const data = await res.json();
+      setTemplateVersion(data.templateVersion);
+      setPromptFingerprint(data.promptId);
+      showSuccess("Prompt JSON saved!");
+    } catch (e: any) {
+      showError(e?.message || "Failed to save prompt JSON");
     }
   };
-
-  // If brief or analysis changes after prompts are generated, show refresh button
-  const needsRefresh = false; // For now, since autofill is always fresh
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -91,40 +107,30 @@ const UgcStudio = () => {
             {autofillError && (
               <div className="p-4 bg-muted rounded text-destructive">Autofill failed: {autofillError}</div>
             )}
-            {creativeBrief && autofillScenes && (
-              <div className="p-4 bg-card rounded shadow space-y-2">
-                <div className="font-semibold">AI-Suggested Creative Brief</div>
-                <div className="text-xs text-muted-foreground">
-                  Product: {creativeBrief.product?.brand} {creativeBrief.product?.name} ({creativeBrief.product?.category})
-                </div>
-                <div className="flex flex-wrap gap-2 my-1">
-                  Palette: {(creativeBrief.palette || []).map((c: string) => (
-                    <span key={c} className="inline-block w-5 h-5 rounded border" style={{ background: c }} title={c}></span>
-                  ))}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Environment: {autofillScenes[0]?.environment}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Confidence: {confidence ? Object.entries(confidence).map(([k, v]) => `${k}: ${(v as number * 100).toFixed(0)}%`).join(", ") : "N/A"}
-                </div>
-                {warnings && warnings.length > 0 && (
-                  <div className="text-xs text-yellow-700">Warnings: {warnings.join("; ")}</div>
-                )}
-                <div className="mt-2">
-                  <Button onClick={handleAcceptAutofill} className="w-full">Accept &amp; Review Scenes</Button>
-                </div>
-              </div>
+            {creativeBrief && autofillScenes && !promptsReady && (
+              <AutofillReviewCard
+                creativeBrief={creativeBrief}
+                scenes={autofillScenes}
+                confidence={confidence}
+                warnings={warnings}
+                onAccept={handleAcceptAutofill}
+              />
             )}
           </div>
           <div className="md:col-span-2 space-y-4">
             {promptsReady && prompts && (
-              <PromptPreview
-                brief={brief}
-                scenes={prompts}
-                directImageUrl={imageUrl}
-                analysis={analysis}
-              />
+              <div>
+                <div className="mb-2 text-xs text-muted-foreground">
+                  <span>Template version: {templateVersion}</span>
+                  <span className="ml-4">Prompt fingerprint: {promptFingerprint}</span>
+                </div>
+                <PromptPreview
+                  brief={brief}
+                  scenes={prompts}
+                  directImageUrl={imageUrl}
+                  analysis={analysis}
+                />
+              </div>
             )}
             <BatchBar onStitch={() => setStitchOpen(true)} />
             <div className="grid gap-4">
