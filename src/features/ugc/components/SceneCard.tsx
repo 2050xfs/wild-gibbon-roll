@@ -2,6 +2,7 @@ import * as React from "react";
 import type { Scene } from "@/lib/types/ugc";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
 import { selectSceneVersion, getSceneVersions } from "@/lib/api/client";
+import { useSceneVersionsSubscription } from "@/features/ugc/hooks/useSceneVersionsSubscription";
 
 type Props = { scene: Scene };
 
@@ -35,8 +36,12 @@ const SceneCard = ({ scene }: Props) => {
 
   React.useEffect(() => {
     fetchVersions();
-    // Optionally, poll or subscribe for updates
   }, [fetchVersions]);
+
+  // Real-time updates
+  useSceneVersionsSubscription([scene.id], () => {
+    fetchVersions();
+  });
 
   const handleSelect = async (versionId: string) => {
     await selectSceneVersion(versionId);
