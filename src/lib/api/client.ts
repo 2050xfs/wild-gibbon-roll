@@ -40,3 +40,20 @@ export async function getSceneVersions(sceneId: string): Promise<any[]> {
   if (!res.ok) return [];
   return res.json();
 }
+
+// NEW: createSceneVersion
+export async function createSceneVersion({
+  scene_id,
+  provider_job_id,
+  source_url,
+}: {
+  scene_id: string;
+  provider_job_id?: string;
+  source_url?: string;
+}): Promise<{ ok: boolean; version: any }> {
+  return apiPost<{ ok: boolean; version: any }>("/functions/v1/create-scene-version", {
+    scene_id,
+    provider_job_id,
+    source_url,
+  });
+}

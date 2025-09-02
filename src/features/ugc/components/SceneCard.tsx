@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { Scene } from "@/lib/types/ugc";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
-import { selectSceneVersion, getSceneVersions } from "@/lib/api/client";
+import { selectSceneVersion, getSceneVersions, createSceneVersion } from "@/lib/api/client";
 import { useSceneVersionsSubscription } from "@/features/ugc/hooks/useSceneVersionsSubscription";
 
 type Props = { scene: Scene };
@@ -26,6 +26,7 @@ const SceneCard = ({ scene }: Props) => {
 
   const [versions, setVersions] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [sending, setSending] = React.useState(false);
 
   const fetchVersions = React.useCallback(async () => {
     setLoading(true);
@@ -48,6 +49,29 @@ const SceneCard = ({ scene }: Props) => {
     fetchVersions();
   };
 
+  // New: handle send prompt and create version
+  const handleSendPrompt = async () => {
+    setSending(true);
+    try {
+      // 1. Start provider job (replace with your actual job start logic)
+      // const providerJobId = await startProviderJob(scene.prompt);
+      const providerJobId = "mock-job-id-" + Math.random().toString(36).slice(2, 8); // Replace with real job ID
+
+      // 2. Create scene version in DB
+      await createSceneVersion({
+        scene_id: scene.id,
+        provider_job_id: providerJobId,
+      });
+
+      // 3. Optionally, update local state/UI
+      fetchVersions();
+    } catch (e) {
+      // Handle error (show toast, etc.)
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="p-4 bg-card rounded shadow flex flex-col gap-2">
       <div className="flex items-center justify-between">
@@ -60,9 +84,10 @@ const SceneCard = ({ scene }: Props) => {
       {sceneStatus === "idle" && (
         <button
           className="px-3 py-1 rounded bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition w-fit"
-          onClick={() => sendPrompt?.(scene.id)}
+          onClick={handleSendPrompt}
+          disabled={sending}
         >
-          Send Prompt
+          {sending ? "Sending..." : "Send Prompt"}
         </button>
       )}
       {sceneStatus === "error" && (
