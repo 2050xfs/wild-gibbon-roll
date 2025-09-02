@@ -47,6 +47,10 @@ const StitchModal = ({
     // eslint-disable-next-line
   }, [open]);
 
+  const allReady = selectedVersions.length === scenes.length && selectedVersions.every(
+    (v) => v.status === "ready" && (v.rendition_url || v.source_url)
+  );
+
   const handleStitch = async () => {
     setSubmitting(true);
     const sceneUrls = order.map((sceneId) => {
@@ -130,6 +134,11 @@ const StitchModal = ({
             onChange={(e) => setEndCard(e.target.value)}
           />
         </div>
+        {!allReady && (
+          <div className="mb-4 text-red-600 text-sm">
+            All scenes must have a selected, ready version with a video before stitching.
+          </div>
+        )}
         {stitchJob && (
           <div className="mb-4">
             <div className="text-sm">
@@ -164,7 +173,7 @@ const StitchModal = ({
           <button
             className="px-4 py-2 rounded bg-primary text-primary-foreground font-semibold"
             onClick={handleStitch}
-            disabled={submitting || (stitchJob && stitchJob.status === "done")}
+            disabled={submitting || !allReady || (stitchJob && stitchJob.status === "done")}
             type="button"
           >
             {submitting ? "Stitching..." : "Stitch"}
