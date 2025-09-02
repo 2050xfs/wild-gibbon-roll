@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { Sha256 } from "https://deno.land/std@0.224.0/hash/sha256.ts";
+import { Sha256 } from "https://deno.land/std@0.190.0/hash/sha256.ts";
 
 function assertInput(b: any) {
   if (!b || typeof b !== "object") throw new Error("body required");
