@@ -36,7 +36,7 @@ export function buildVeoPrompt(
       `A cinematic shot of ${brand}. ${visualDesc}`,
     style: [
       "photorealistic cinematic",
-      brief.modelChoice === "V3 Quality" ? "high detail" : "fast render",
+      "fast render",
       font ? `font: ${font}` : "",
       colors ? `color scheme: ${colors}` : "",
     ]
@@ -59,7 +59,7 @@ export function buildVeoPrompt(
       ...(colors ? colors.split(",") : []),
       "cinematic",
       "ugc",
-      "veo3",
+      "veo3_fast",
     ].map((k) => k.trim()).filter(Boolean),
   };
 }
