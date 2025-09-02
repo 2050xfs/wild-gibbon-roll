@@ -8,8 +8,8 @@ import StitchModal from "@/features/ugc/components/StitchModal";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
 import { Button } from "@/components/ui/button";
 import PromptPreview from "@/components/PromptPreview";
-import type { CreativeBrief as BriefType, SceneOutput } from "@/types/ugc";
 import { showError } from "@/utils/toast";
+import { useAutofillFromImage } from "../hooks/useAutofillFromImage";
 
 type ImageAnalysis = {
   brand_name?: string | null;
@@ -18,85 +18,51 @@ type ImageAnalysis = {
   visual_description?: string | null;
 };
 
-type VeoBuildResponse = {
-  templateVersion: string;
-  promptId: string;
-  scenes: any[];
-};
-
 const UgcStudio = () => {
   const { scenes } = useUgcStore();
   const [stitchOpen, setStitchOpen] = React.useState(false);
 
   // Local state for brief, image, analysis, and prompts
-  const [brief, setBrief] = React.useState<BriefType | undefined>(undefined);
+  const [brief, setBrief] = React.useState<any | undefined>(undefined);
   const [imageUrl, setImageUrl] = React.useState<string>("");
   const [analysis, setAnalysis] = React.useState<ImageAnalysis | null>(null);
   const [prompts, setPrompts] = React.useState<any[] | undefined>(undefined);
   const [promptsReady, setPromptsReady] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [templateVersion, setTemplateVersion] = React.useState<string | undefined>(undefined);
-  const [promptFingerprint, setPromptFingerprint] = React.useState<string | undefined>(undefined);
 
-  // Track last-used brief, imageUrl, and analysis for refresh detection
-  const [lastBrief, setLastBrief] = React.useState<BriefType | undefined>(undefined);
-  const [lastImageUrl, setLastImageUrl] = React.useState<string>("");
-  const [lastAnalysis, setLastAnalysis] = React.useState<ImageAnalysis | null>(null);
+  // Autofill hook
+  const {
+    loading: autofillLoading,
+    error: autofillError,
+    creativeBrief,
+    scenes: autofillScenes,
+    confidence,
+    warnings,
+    autofill,
+  } = useAutofillFromImage();
 
-  // Generate prompts only when user clicks button
-  const handleGeneratePrompts = async () => {
-    if (!brief || !imageUrl) return;
-    setLoading(true);
-    try {
-      // Compose payload for Edge Function
-      const payload: any = {
-        numScenes: brief.numberOfVideos,
-        aspect: (() => {
-          switch (brief.aspectRatio) {
-            case "vertical_9_16": return "9:16";
-            case "portrait_3_4": return "3:4";
-            case "landscape_16_9": return "16:9";
-            default: return "9:16";
-          }
-        })(),
-        themeHint: "", // You can wire this to a field if you want
-        productImageUrl: imageUrl,
-        influencer: {
-          appearance: brief.influencerDescription,
-        },
-        scriptMode: brief.dialogueMode === "provide" ? "manual" : "ai",
-        scriptText: brief.scriptText,
-      };
-      const res = await fetch("/functions/v1/veo-build", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+  // When imageUrl changes, trigger autofill
+  React.useEffect(() => {
+    if (imageUrl && /^https?:\/\//.test(imageUrl)) {
+      autofill({
+        imageUrl,
+        scriptMode: "ai",
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Failed to generate prompts");
-      }
-      const data: VeoBuildResponse = await res.json();
-      setPrompts(data.scenes);
+    }
+    // eslint-disable-next-line
+  }, [imageUrl]);
+
+  // Accept autofill: set brief and scenes for editing/generation
+  const handleAcceptAutofill = () => {
+    if (creativeBrief && autofillScenes) {
+      setBrief(creativeBrief);
+      setPrompts(autofillScenes);
       setPromptsReady(true);
-      setTemplateVersion(data.templateVersion);
-      setPromptFingerprint(data.promptId);
-      setLastBrief(brief);
-      setLastImageUrl(imageUrl);
-      setLastAnalysis(analysis);
-    } catch (e: any) {
-      showError(e?.message || "Failed to generate prompts");
-    } finally {
-      setLoading(false);
     }
   };
 
   // If brief or analysis changes after prompts are generated, show refresh button
-  const needsRefresh =
-    promptsReady &&
-    (JSON.stringify(brief) !== JSON.stringify(lastBrief) ||
-      imageUrl !== lastImageUrl ||
-      JSON.stringify(analysis) !== JSON.stringify(lastAnalysis));
+  const needsRefresh = false; // For now, since autofill is always fresh
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -118,40 +84,47 @@ const UgcStudio = () => {
               onBriefChange={(b) => setBrief(b)}
               onImageUrlChange={setImageUrl}
             />
-            <div className="flex flex-col gap-2 mt-4">
-              <Button
-                onClick={handleGeneratePrompts}
-                disabled={!brief || !imageUrl || loading}
-                className="w-full"
-              >
-                {loading ? "Generating..." : "Generate Prompts"}
-              </Button>
-              {needsRefresh && (
-                <Button
-                  variant="secondary"
-                  onClick={handleGeneratePrompts}
-                  className="w-full"
-                  disabled={loading}
-                >
-                  Refresh Prompts
-                </Button>
-              )}
-            </div>
+            {/* Autofill review card */}
+            {autofillLoading && (
+              <div className="p-4 bg-muted rounded text-blue-600">Analyzing image and autofilling brief…</div>
+            )}
+            {autofillError && (
+              <div className="p-4 bg-muted rounded text-destructive">Autofill failed: {autofillError}</div>
+            )}
+            {creativeBrief && autofillScenes && (
+              <div className="p-4 bg-card rounded shadow space-y-2">
+                <div className="font-semibold">AI-Suggested Creative Brief</div>
+                <div className="text-xs text-muted-foreground">
+                  Product: {creativeBrief.product?.brand} {creativeBrief.product?.name} ({creativeBrief.product?.category})
+                </div>
+                <div className="flex flex-wrap gap-2 my-1">
+                  Palette: {(creativeBrief.palette || []).map((c: string) => (
+                    <span key={c} className="inline-block w-5 h-5 rounded border" style={{ background: c }} title={c}></span>
+                  ))}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Environment: {autofillScenes[0]?.environment}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Confidence: {confidence ? Object.entries(confidence).map(([k, v]) => `${k}: ${(v as number * 100).toFixed(0)}%`).join(", ") : "N/A"}
+                </div>
+                {warnings && warnings.length > 0 && (
+                  <div className="text-xs text-yellow-700">Warnings: {warnings.join("; ")}</div>
+                )}
+                <div className="mt-2">
+                  <Button onClick={handleAcceptAutofill} className="w-full">Accept &amp; Review Scenes</Button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="md:col-span-2 space-y-4">
             {promptsReady && prompts && (
-              <div>
-                <div className="mb-2 text-xs text-muted-foreground">
-                  <span>Template version: {templateVersion}</span>
-                  <span className="ml-4">Prompt fingerprint: {promptFingerprint}</span>
-                </div>
-                <PromptPreview
-                  brief={brief}
-                  scenes={prompts}
-                  directImageUrl={imageUrl}
-                  analysis={analysis}
-                />
-              </div>
+              <PromptPreview
+                brief={brief}
+                scenes={prompts}
+                directImageUrl={imageUrl}
+                analysis={analysis}
+              />
             )}
             <BatchBar onStitch={() => setStitchOpen(true)} />
             <div className="grid gap-4">
