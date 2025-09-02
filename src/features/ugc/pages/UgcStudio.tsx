@@ -8,13 +8,20 @@ import StitchModal from "@/features/ugc/components/StitchModal";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
 import { Button } from "@/components/ui/button";
 import PromptPreview from "@/components/PromptPreview";
-import type { CreativeBrief as BriefType, SceneOutput, ModelChoice } from "@/types/ugc";
+import type { CreativeBrief as BriefType, SceneOutput } from "@/types/ugc";
+import { showError } from "@/utils/toast";
 
 type ImageAnalysis = {
   brand_name?: string | null;
   color_scheme?: string[] | null;
   font_style?: string | null;
   visual_description?: string | null;
+};
+
+type VeoBuildResponse = {
+  templateVersion: string;
+  promptId: string;
+  scenes: any[];
 };
 
 const UgcStudio = () => {
@@ -25,8 +32,11 @@ const UgcStudio = () => {
   const [brief, setBrief] = React.useState<BriefType | undefined>(undefined);
   const [imageUrl, setImageUrl] = React.useState<string>("");
   const [analysis, setAnalysis] = React.useState<ImageAnalysis | null>(null);
-  const [prompts, setPrompts] = React.useState<SceneOutput[] | undefined>(undefined);
+  const [prompts, setPrompts] = React.useState<any[] | undefined>(undefined);
   const [promptsReady, setPromptsReady] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [templateVersion, setTemplateVersion] = React.useState<string | undefined>(undefined);
+  const [promptFingerprint, setPromptFingerprint] = React.useState<string | undefined>(undefined);
 
   // Track last-used brief, imageUrl, and analysis for refresh detection
   const [lastBrief, setLastBrief] = React.useState<BriefType | undefined>(undefined);
@@ -34,13 +44,51 @@ const UgcStudio = () => {
   const [lastAnalysis, setLastAnalysis] = React.useState<ImageAnalysis | null>(null);
 
   // Generate prompts only when user clicks button
-  const handleGeneratePrompts = () => {
+  const handleGeneratePrompts = async () => {
     if (!brief || !imageUrl) return;
-    setPrompts(buildScenesWithAnalysis(brief, imageUrl, analysis));
-    setPromptsReady(true);
-    setLastBrief(brief);
-    setLastImageUrl(imageUrl);
-    setLastAnalysis(analysis);
+    setLoading(true);
+    try {
+      // Compose payload for Edge Function
+      const payload: any = {
+        numScenes: brief.numberOfVideos,
+        aspect: (() => {
+          switch (brief.aspectRatio) {
+            case "vertical_9_16": return "9:16";
+            case "portrait_3_4": return "3:4";
+            case "landscape_16_9": return "16:9";
+            default: return "9:16";
+          }
+        })(),
+        themeHint: "", // You can wire this to a field if you want
+        productImageUrl: imageUrl,
+        influencer: {
+          appearance: brief.influencerDescription,
+        },
+        scriptMode: brief.dialogueMode === "provide" ? "manual" : "ai",
+        scriptText: brief.scriptText,
+      };
+      const res = await fetch("/functions/v1/veo-build", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to generate prompts");
+      }
+      const data: VeoBuildResponse = await res.json();
+      setPrompts(data.scenes);
+      setPromptsReady(true);
+      setTemplateVersion(data.templateVersion);
+      setPromptFingerprint(data.promptId);
+      setLastBrief(brief);
+      setLastImageUrl(imageUrl);
+      setLastAnalysis(analysis);
+    } catch (e: any) {
+      showError(e?.message || "Failed to generate prompts");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // If brief or analysis changes after prompts are generated, show refresh button
@@ -49,97 +97,6 @@ const UgcStudio = () => {
     (JSON.stringify(brief) !== JSON.stringify(lastBrief) ||
       imageUrl !== lastImageUrl ||
       JSON.stringify(analysis) !== JSON.stringify(lastAnalysis));
-
-  function buildScenesWithAnalysis(
-    brief: BriefType,
-    directImageUrl: string,
-    analysis: ImageAnalysis | null
-  ): SceneOutput[] {
-    const ratio: { video: "9:16" | "3:4" | "16:9"; image: "9:16" | "3:4" | "16:9" } = (() => {
-      switch (brief.aspectRatio) {
-        case "vertical_9_16":
-          return { video: "9:16", image: "9:16" };
-        case "portrait_3_4":
-          return { video: "3:4", image: "3:4" };
-        case "landscape_16_9":
-          return { video: "16:9", image: "16:9" };
-        default:
-          return { video: "9:16", image: "9:16" };
-      }
-    })();
-
-    const baseDesc =
-      analysis?.visual_description ||
-      "A product image provided by the user. Brand/style cues may be present.";
-    const brand = analysis?.brand_name || "the product";
-    const colors = (analysis?.color_scheme || []).join(", ");
-    const font = analysis?.font_style || "";
-    const imageMention = `Reference image: ${directImageUrl}`;
-    const analysisMention = `Description: ${baseDesc}${brand ? `; Brand: ${brand}` : ""}${colors ? `; Colors: ${colors}` : ""}${font ? `; Font: ${font}` : ""}`;
-
-    const sceneHints = (brief.specialRequests || "")
-      .split(/[;,\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const pool =
-      sceneHints.length > 0
-        ? sceneHints
-        : [
-            "casual vlog selfie at home, natural light, minimal makeup",
-            "in-car testimonial, dash-mounted phone, daylight reflections",
-            "podcast-style medium shot at desk, soft lamp light, cozy background",
-            "mirror selfie in bathroom, handheld angle, imperfect framing",
-            "walking-and-talking outside, sidewalk background, ambient city sounds",
-          ];
-
-    const scenes: SceneOutput[] = [];
-    for (let i = 0; i < brief.numberOfVideos; i++) {
-      const baseScene = pool[i % pool.length];
-      const character =
-        brief.influencerDescription ||
-        "normal and casual looking person, authentic, relatable";
-      const special = brief.specialRequests || "";
-
-      const script =
-        brief.dialogueMode === "provide"
-          ? brief.scriptText || ""
-          : `Hi… I’ve been trying this product for a week now… and honestly I love it… It’s simple… looks great… and does exactly what I need… You should definitely check it out…`;
-
-      const imagePrompt = [
-        `Unremarkable amateur iPhone photo… ${baseScene}…`,
-        `Product from reference image is clearly visible…`,
-        `Casual framing, slight motion blur acceptable, realistic lighting…`,
-        `Character: ${character}…`,
-        special ? `Details: ${special}…` : "",
-        imageMention,
-        analysisMention,
-        `No watermarks… realistic textures… no text overlays…`,
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      const videoPrompt = [
-        `UGC style video… ${baseScene}…`,
-        `Focus on product from reference image…`,
-        `Casual, authentic tone… realistic audio ambience…`,
-        `Dialogue: ${script}`,
-        imageMention,
-        analysisMention,
-        `Prompt rules: use ellipses for pauses… avoid hyphenation issues… no double quotes in content…`,
-      ].join(" ");
-
-      scenes.push({
-        id: `${i + 1}`,
-        imagePrompt,
-        videoPrompt,
-        videoAspectRatio: ratio.video,
-        imageAspectRatio: ratio.image,
-        model: "V3 Fast", // Use ModelChoice value for type safety
-      });
-    }
-    return scenes;
-  }
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -164,16 +121,17 @@ const UgcStudio = () => {
             <div className="flex flex-col gap-2 mt-4">
               <Button
                 onClick={handleGeneratePrompts}
-                disabled={!brief || !imageUrl}
+                disabled={!brief || !imageUrl || loading}
                 className="w-full"
               >
-                Generate Prompts
+                {loading ? "Generating..." : "Generate Prompts"}
               </Button>
               {needsRefresh && (
                 <Button
                   variant="secondary"
                   onClick={handleGeneratePrompts}
                   className="w-full"
+                  disabled={loading}
                 >
                   Refresh Prompts
                 </Button>
@@ -182,12 +140,18 @@ const UgcStudio = () => {
           </div>
           <div className="md:col-span-2 space-y-4">
             {promptsReady && prompts && (
-              <PromptPreview
-                brief={brief}
-                scenes={prompts}
-                directImageUrl={imageUrl}
-                analysis={analysis}
-              />
+              <div>
+                <div className="mb-2 text-xs text-muted-foreground">
+                  <span>Template version: {templateVersion}</span>
+                  <span className="ml-4">Prompt fingerprint: {promptFingerprint}</span>
+                </div>
+                <PromptPreview
+                  brief={brief}
+                  scenes={prompts}
+                  directImageUrl={imageUrl}
+                  analysis={analysis}
+                />
+              </div>
             )}
             <BatchBar onStitch={() => setStitchOpen(true)} />
             <div className="grid gap-4">
