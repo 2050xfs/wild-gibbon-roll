@@ -1,136 +1,97 @@
 // @ts-nocheck
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+type StitchBody = {
+  sceneUrls: string[];
+  aspectRatio?: "9:16" | "16:9" | "1:1";
+  fps?: number;
+  resolution?: "hd" | "1080" | "2160";
+  transition?: "none" | "fade";
+  endCard?: { text?: string; imageUrl?: string } | null;
 };
 
-const SHOTSTACK_API_KEY = Deno.env.get("SHOTSTACK_API_KEY");
-const SHOTSTACK_BASE = "https://api.shotstack.io/edit/stage"; // Use 'v1' for production
+const EDIT_BASE = Deno.env.get("SHOTSTACK_EDIT_BASE")!;
+const API_KEY   = Deno.env.get("SHOTSTACK_API_KEY")!;
+const CALLBACK  = Deno.env.get("PUBLIC_WEBHOOK_URL")!;
+
+function buildClips(urls: string[], useFade: boolean): any[] {
+  return urls.map((src, i) => {
+    const clip: any = {
+      asset: { type: "video", src },
+      start: i === 0 ? 0 : "auto",
+      length: "auto",
+      fit: "cover",
+    };
+    if (useFade) {
+      if (i === 0) clip.transition = { out: "fade" };
+      else if (i === urls.length - 1) clip.transition = { in: "fade" };
+      else clip.transition = { in: "fade", out: "fade" };
+    }
+    return clip;
+  });
+}
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
   }
 
-  if (req.method === "POST") {
-    let body;
-    try {
-      body = await req.json();
-    } catch {
-      return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: corsHeaders });
-    }
-
+  try {
     const {
       sceneUrls,
-      order,
-      transition = "none",
-      aspect = "9:16",
-      endCard,
-      resolution = "1080",
+      aspectRatio = "9:16",
       fps = 30,
-      webhookUrl,
-    } = body;
+      resolution = "1080",
+      transition = "fade",
+      endCard = null,
+    } = (await req.json()) as StitchBody;
 
-    if (!Array.isArray(sceneUrls) || sceneUrls.length < 1) {
-      return new Response(JSON.stringify({ error: "sceneUrls must be a non-empty array" }), { status: 400, headers: corsHeaders });
+    if (!sceneUrls?.length || sceneUrls.length < 2) {
+      return new Response(JSON.stringify({ error: "Need >=2 sceneUrls" }), { status: 400 });
     }
 
-    // Order the scene URLs as per the order array if provided
-    let orderedUrls = sceneUrls;
-    if (Array.isArray(order) && order.length === sceneUrls.length) {
-      orderedUrls = order.map((id) => sceneUrls.find((url) => url.includes(id)) || sceneUrls[0]);
-    }
+    const clips = buildClips(sceneUrls, transition === "fade");
 
-    // Build Shotstack clips
-    const clips = orderedUrls.map((url, idx) => {
-      const clip = {
-        asset: { type: "video", src: url, fit: "cover" },
-        start: idx === 0 ? 0 : "auto",
-        length: "auto",
-      };
-      // Add transitions if requested
-      if (transition === "crossfade") {
-        if (idx === 0) clip.transition = { out: "fade" };
-        else if (idx === orderedUrls.length - 1) clip.transition = { in: "fade" };
-        else clip.transition = { in: "fade", out: "fade" };
-      }
-      return clip;
-    });
-
-    // Add end card as a final image or video clip if provided
-    if (endCard && typeof endCard === "string" && endCard.trim().length > 0) {
+    if (endCard?.imageUrl || endCard?.text) {
+      const asset = endCard.imageUrl
+        ? { type: "image", src: endCard.imageUrl }
+        : { type: "title", text: endCard.text, style: "minimal" };
       clips.push({
-        asset: { type: "image", src: endCard, fit: "cover" },
+        asset,
         start: "auto",
-        length: 2, // 2 seconds for end card
+        length: 2,
+        fit: "contain",
+        transition: { in: "fade" },
       });
     }
 
-    // Build the Shotstack Edit JSON
     const edit = {
-      timeline: {
-        tracks: [{ clips }],
-      },
-      output: {
-        format: "mp4",
-        resolution,
-        aspectRatio: aspect,
-        fps,
-      },
+      timeline: { tracks: [{ clips }] },
+      output: { format: "mp4", resolution, aspectRatio, fps },
+      callback: CALLBACK,
     };
 
-    if (webhookUrl) {
-      edit["callback"] = webhookUrl;
-    }
-
-    // POST to Shotstack
-    const shotstackRes = await fetch(`${SHOTSTACK_BASE}/render`, {
+    const res = await fetch(`${EDIT_BASE}/render`, {
       method: "POST",
       headers: {
-        "x-api-key": SHOTSTACK_API_KEY,
-        "Content-Type": "application/json",
+        "content-type": "application/json",
+        "x-api-key": API_KEY,
       },
       body: JSON.stringify(edit),
     });
 
-    const shotstackData = await shotstackRes.json();
-
-    if (!shotstackRes.ok) {
-      return new Response(JSON.stringify({ error: "Shotstack error", details: shotstackData }), {
-        status: 502,
-        headers: corsHeaders,
-      });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("Shotstack error", data);
+      return new Response(JSON.stringify({ error: "Shotstack render failed", data }), { status: 502 });
     }
 
-    // Return the render id and status
-    return new Response(JSON.stringify({ renderId: shotstackData.response?.id, status: shotstackData.response?.status || "queued" }), {
-      status: 200,
-      headers: corsHeaders,
+    return new Response(JSON.stringify({ ok: true, renderId: data.response?.id || data.id }), {
+      headers: { "content-type": "application/json" },
+      status: 201,
     });
+  } catch (err) {
+    console.error(err);
+    return new Response(JSON.stringify({ error: "Bad Request" }), { status: 400 });
   }
-
-  // GET /reels-stitch?id=RENDER_ID → poll Shotstack for status/result
-  if (req.method === "GET") {
-    const url = new URL(req.url);
-    const id = url.searchParams.get("id");
-    if (!id) {
-      return new Response(JSON.stringify({ error: "Missing id param" }), { status: 400, headers: corsHeaders });
-    }
-    const statusRes = await fetch(`${SHOTSTACK_BASE}/render/${id}`, {
-      headers: { "x-api-key": SHOTSTACK_API_KEY },
-    });
-    const statusData = await statusRes.json();
-    if (!statusRes.ok) {
-      return new Response(JSON.stringify({ error: "Shotstack status error", details: statusData }), {
-        status: 502,
-        headers: corsHeaders,
-      });
-    }
-    return new Response(JSON.stringify(statusData.response), { status: 200, headers: corsHeaders });
-  }
-
-  return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 });
