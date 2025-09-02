@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createHash } from "https://deno.land/std@0.224.0/hash/mod.ts";
+import { Sha256 } from "https://deno.land/std@0.224.0/hash/sha256.ts";
 
 function assertInput(b: any) {
   if (!b || typeof b !== "object") throw new Error("body required");
@@ -26,7 +26,9 @@ serve(async (req) => {
 
     // Version & provenance
     const templateVersion = "veo-json@2025-09-01";
-    const fingerprint = createHash("sha256").update(JSON.stringify({ templateVersion, scenes })).toString();
+    const hash = new Sha256();
+    hash.update(JSON.stringify({ templateVersion, scenes }));
+    const fingerprint = hash.toString();
 
     return new Response(JSON.stringify({ templateVersion, promptId: fingerprint, scenes }), {
       headers: { "content-type": "application/json" },
