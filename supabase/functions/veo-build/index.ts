@@ -1,12 +1,17 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { Sha256 } from "https://deno.land/std@0.190.0/hash/sha256.ts";
 
 function assertInput(b: any) {
   if (!b || typeof b !== "object") throw new Error("body required");
   if (!b.numScenes || b.numScenes < 1 || b.numScenes > 10) throw new Error("numScenes 1..10");
   if (!["9:16","16:9","1:1"].includes(b.aspect)) throw new Error("aspect invalid");
   if (!["manual","ai"].includes(b.scriptMode)) throw new Error("scriptMode invalid");
+}
+
+async function sha256Hex(str: string): Promise<string> {
+  const buf = new TextEncoder().encode(str);
+  const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 serve(async (req) => {
@@ -26,9 +31,7 @@ serve(async (req) => {
 
     // Version & provenance
     const templateVersion = "veo-json@2025-09-01";
-    const hash = new Sha256();
-    hash.update(JSON.stringify({ templateVersion, scenes }));
-    const fingerprint = hash.toString();
+    const fingerprint = await sha256Hex(JSON.stringify({ templateVersion, scenes }));
 
     return new Response(JSON.stringify({ templateVersion, promptId: fingerprint, scenes }), {
       headers: { "content-type": "application/json" },
