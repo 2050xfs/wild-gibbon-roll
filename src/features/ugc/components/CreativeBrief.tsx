@@ -1,29 +1,50 @@
 import * as React from "react";
-import { useUgcStore } from "@/features/ugc/state/ugcStore";
 
-const CreativeBrief = () => {
+type Props = {
+  onBriefChange?: (brief: any) => void;
+  onImageUrlChange?: (url: string) => void;
+};
+
+const CreativeBrief = ({ onBriefChange, onImageUrlChange }: Props) => {
   const [numVideos, setNumVideos] = React.useState(3);
   const [scriptMode, setScriptMode] = React.useState<"manual" | "ai">("ai");
   const [scriptText, setScriptText] = React.useState("");
   const [influencer, setInfluencer] = React.useState("");
-  const [aspect, setAspect] = React.useState("vertical");
+  const [aspect, setAspect] = React.useState("vertical_9_16");
   const [model, setModel] = React.useState("V3 Fast");
-  const setBrief = useUgcStore((s) => s.setBrief);
+  const [imageUrl, setImageUrl] = React.useState("");
 
   React.useEffect(() => {
-    setBrief?.({
-      numVideos,
-      scriptMode,
+    onBriefChange?.({
+      numberOfVideos: numVideos,
+      dialogueMode: scriptMode === "ai" ? "generate" : "provide",
       scriptText,
-      influencer,
-      aspect,
-      model,
+      influencerDescription: influencer,
+      aspectRatio: aspect,
+      modelChoice: model,
+      specialRequests: "",
     });
-  }, [numVideos, scriptMode, scriptText, influencer, aspect, model, setBrief]);
+    // eslint-disable-next-line
+  }, [numVideos, scriptMode, scriptText, influencer, aspect, model]);
+
+  React.useEffect(() => {
+    onImageUrlChange?.(imageUrl);
+    // eslint-disable-next-line
+  }, [imageUrl]);
 
   return (
     <div className="p-4 bg-card rounded shadow space-y-3">
       <h2 className="font-semibold mb-2">Creative Brief</h2>
+      <div>
+        <label className="block text-sm font-medium mb-1">Product Image URL</label>
+        <input
+          type="text"
+          className="w-full border rounded p-2"
+          placeholder="Paste image URL or Google Drive link"
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+        />
+      </div>
       <div>
         <label className="block text-sm font-medium mb-1">Number of Videos</label>
         <input
@@ -79,9 +100,9 @@ const CreativeBrief = () => {
           value={aspect}
           onChange={(e) => setAspect(e.target.value)}
         >
-          <option value="vertical">Vertical (9:16)</option>
-          <option value="portrait">Portrait (3:4)</option>
-          <option value="landscape">Landscape (16:9)</option>
+          <option value="vertical_9_16">Vertical (9:16)</option>
+          <option value="portrait_3_4">Portrait (3:4)</option>
+          <option value="landscape_16_9">Landscape (16:9)</option>
         </select>
       </div>
       <div>
