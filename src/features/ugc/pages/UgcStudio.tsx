@@ -8,7 +8,7 @@ import StitchModal from "@/features/ugc/components/StitchModal";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
 import { Button } from "@/components/ui/button";
 import PromptPreview from "@/components/PromptPreview";
-import type { CreativeBrief as BriefType, SceneOutput } from "@/types/ugc";
+import type { CreativeBrief as BriefType, SceneOutput, ModelChoice } from "@/types/ugc";
 
 type ImageAnalysis = {
   brand_name?: string | null;
@@ -135,7 +135,7 @@ const UgcStudio = () => {
         videoPrompt,
         videoAspectRatio: ratio.video,
         imageAspectRatio: ratio.image,
-        model: brief.modelChoice,
+        model: "V3 Fast", // Use ModelChoice value for type safety
       });
     }
     return scenes;
