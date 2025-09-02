@@ -11,6 +11,8 @@ import PromptPreview from "@/components/PromptPreview";
 import { showError, showSuccess } from "@/utils/toast";
 import { useAutofillFromImage } from "../hooks/useAutofillFromImage";
 import AutofillReviewCard from "@/features/ugc/components/AutofillReviewCard";
+import PromptLibraryFlipbook from "@/features/ugc/components/PromptLibraryFlipbook";
+import { usePromptLibrary } from "../hooks/usePromptLibrary";
 
 type ImageAnalysis = {
   brand_name?: string | null;
@@ -43,6 +45,9 @@ const UgcStudio = () => {
     autofill,
   } = useAutofillFromImage();
 
+  // Prompt library
+  const { prompts: libraryPrompts, fetchPrompts, savePrompt } = usePromptLibrary();
+
   // When imageUrl changes, trigger autofill
   React.useEffect(() => {
     if (imageUrl && /^https?:\/\//.test(imageUrl)) {
@@ -54,13 +59,13 @@ const UgcStudio = () => {
     // eslint-disable-next-line
   }, [imageUrl]);
 
-  // Accept autofill: set brief and scenes for editing/generation
+  // Accept autofill: set brief and scenes for editing/generation, and save to library
   const handleAcceptAutofill = async (editedBrief: any, editedScenes: any[]) => {
     setBrief(editedBrief);
     setPrompts(editedScenes);
     setPromptsReady(true);
 
-    // Save prompt JSON/fingerprint/version in DB (example: save to scene_versions)
+    // Save prompt JSON/fingerprint/version in DB (example: save to scene_versions and prompt_library)
     try {
       const res = await fetch("/functions/v1/veo-build", {
         method: "POST",
@@ -74,11 +79,36 @@ const UgcStudio = () => {
       const data = await res.json();
       setTemplateVersion(data.templateVersion);
       setPromptFingerprint(data.promptId);
+
+      // Save to prompt library
+      await savePrompt({
+        name: `${editedBrief.product?.brand || "Prompt"} ${new Date().toLocaleString()}`,
+        prompt_json: { brief: editedBrief, scenes: editedScenes },
+        fingerprint: data.promptId,
+        template_version: data.templateVersion,
+      });
+
       showSuccess("Prompt JSON saved!");
+      fetchPrompts();
     } catch (e: any) {
       showError(e?.message || "Failed to save prompt JSON");
     }
   };
+
+  // Handle prompt selection from library
+  const handleSelectPrompt = (entry: any) => {
+    setBrief(entry.promptJson.brief);
+    setPrompts(entry.promptJson.scenes);
+    setPromptsReady(true);
+    setTemplateVersion(entry.templateVersion);
+    setPromptFingerprint(entry.fingerprint);
+    showSuccess("Prompt loaded from library!");
+  };
+
+  React.useEffect(() => {
+    fetchPrompts();
+    // eslint-disable-next-line
+  }, []);
 
   return (
     <div className="min-h-screen bg-muted/10">
@@ -116,6 +146,10 @@ const UgcStudio = () => {
                 onAccept={handleAcceptAutofill}
               />
             )}
+            <div className="mt-6">
+              <h2 className="font-semibold mb-2">Prompt Library</h2>
+              <PromptLibraryFlipbook prompts={libraryPrompts} onSelect={handleSelectPrompt} />
+            </div>
           </div>
           <div className="md:col-span-2 space-y-4">
             {promptsReady && prompts && (
