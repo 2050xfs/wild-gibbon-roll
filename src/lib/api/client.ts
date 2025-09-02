@@ -17,11 +17,14 @@ export async function getRenderStatus(renderId: string): Promise<{
   error?: string;
   updated_at?: string;
 } | null> {
-  // Assumes you have a public REST endpoint for renders (Supabase REST or Edge Function)
   const res = await fetch(`/rest/v1/renders?id=eq.${encodeURIComponent(renderId)}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) return null;
   const data = await res.json();
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+export async function ingestSources(urls: string[]): Promise<{ ok: boolean; sources: any[] }> {
+  return apiPost<{ ok: boolean; sources: any[] }>("/functions/v1/ingest-source", { urls });
 }

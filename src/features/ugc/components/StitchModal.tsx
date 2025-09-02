@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
+import { ingestSources } from "@/lib/api/client";
 
 const transitions = [
   { value: "none", label: "None" },
@@ -20,7 +21,6 @@ const StitchModal = ({
   const startStitch = useUgcStore((s) => s.startStitch);
   const clearStitch = useUgcStore((s) => s.clearStitch);
 
-  // Assume each scene has a videoUrl property when ready
   const readyScenes = scenes.filter(
     (scene) => sceneStatus?.[scene.id] === "ready"
   );
@@ -46,16 +46,31 @@ const StitchModal = ({
     // Use the real video URLs for each scene
     const sceneUrls = order.map((id) => {
       const scene = readyScenes.find((s) => s.id === id);
-      // Fallback to placeholder if not present
       return (scene && (scene as any).videoUrl) || "https://www.w3schools.com/html/mov_bbb.mp4";
     });
-    await startStitch?.({
-      sceneUrls,
-      order,
-      transition,
-      aspect: "9:16",
-      endCard: endCard.trim() || undefined,
-    });
+
+    // Optionally ingest all scene URLs before stitching
+    try {
+      const ingestRes = await ingestSources(sceneUrls);
+      const ingestedUrls = ingestRes.sources.map((s: any) => s.response?.url || s.url || s.source?.url || "");
+      // Use ingested URLs if available, else fallback to originals
+      await startStitch?.({
+        sceneUrls: ingestedUrls.every(Boolean) ? ingestedUrls : sceneUrls,
+        order,
+        transition,
+        aspect: "9:16",
+        endCard: endCard.trim() || undefined,
+      });
+    } catch (e) {
+      // Fallback: stitch with original URLs if ingest fails
+      await startStitch?.({
+        sceneUrls,
+        order,
+        transition,
+        aspect: "9:16",
+        endCard: endCard.trim() || undefined,
+      });
+    }
     setSubmitting(false);
   };
 
@@ -86,7 +101,6 @@ const StitchModal = ({
                   <span className="text-xs text-muted-foreground flex-1">
                     {scene?.prompt}
                   </span>
-                  {/* Drag handles would go here */}
                 </li>
               );
             })}
