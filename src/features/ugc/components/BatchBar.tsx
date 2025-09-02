@@ -6,9 +6,19 @@ const BatchBar = ({ onStitch }: { onStitch?: () => void }) => {
   const sceneStatus = useUgcStore((s) => s.sceneStatus);
   const costs = useUgcStore((s) => s.costs);
 
-  const allReady =
-    scenes.length > 0 &&
-    scenes.every((scene) => sceneStatus?.[scene.id] === "ready");
+  const readyScenes = scenes.filter(
+    (scene) => sceneStatus?.[scene.id] === "ready" && (scene as any).videoUrl
+  );
+  const allReady = readyScenes.length === scenes.length && scenes.length > 0;
+
+  const handleDownloadAll = () => {
+    // Placeholder: open all video URLs in new tabs
+    readyScenes.forEach((scene) => {
+      if ((scene as any).videoUrl) {
+        window.open((scene as any).videoUrl, "_blank");
+      }
+    });
+  };
 
   return (
     <div className="flex items-center gap-4 p-3 bg-secondary rounded shadow">
@@ -16,6 +26,7 @@ const BatchBar = ({ onStitch }: { onStitch?: () => void }) => {
         className="btn btn-primary"
         disabled={!allReady}
         title={allReady ? "" : "All scenes must be ready"}
+        onClick={allReady ? handleDownloadAll : undefined}
       >
         Download All (ZIP)
       </button>

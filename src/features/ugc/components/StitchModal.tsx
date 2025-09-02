@@ -20,6 +20,7 @@ const StitchModal = ({
   const startStitch = useUgcStore((s) => s.startStitch);
   const clearStitch = useUgcStore((s) => s.clearStitch);
 
+  // Assume each scene has a videoUrl property when ready
   const readyScenes = scenes.filter(
     (scene) => sceneStatus?.[scene.id] === "ready"
   );
@@ -42,12 +43,14 @@ const StitchModal = ({
 
   const handleStitch = async () => {
     setSubmitting(true);
+    // Use the real video URLs for each scene
+    const sceneUrls = order.map((id) => {
+      const scene = readyScenes.find((s) => s.id === id);
+      // Fallback to placeholder if not present
+      return (scene && (scene as any).videoUrl) || "https://www.w3schools.com/html/mov_bbb.mp4";
+    });
     await startStitch?.({
-      sceneUrls: order.map((id) => {
-        // For demo, use a placeholder video URL
-        // In real app, use actual generated video URLs for each scene
-        return "https://www.w3schools.com/html/mov_bbb.mp4";
-      }),
+      sceneUrls,
       order,
       transition,
       aspect: "9:16",

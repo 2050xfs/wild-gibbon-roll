@@ -25,8 +25,16 @@ const OutputsPanel = () => {
               className="flex items-center gap-4 border rounded p-2"
             >
               <div className="w-32 h-20 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
-                {/* Placeholder for video preview */}
-                Video Preview
+                {/* Video preview if available */}
+                {(scene as any).videoUrl ? (
+                  <video
+                    src={(scene as any).videoUrl}
+                    controls
+                    className="w-full h-full object-cover rounded"
+                  />
+                ) : (
+                  "Video Preview"
+                )}
               </div>
               <div className="flex-1">
                 <div className="font-medium">Scene {scene.index + 1}</div>
@@ -34,31 +42,50 @@ const OutputsPanel = () => {
                   {scene.prompt}
                 </div>
               </div>
-              <button className="btn btn-primary" disabled>
+              <button
+                className="btn btn-primary"
+                disabled={!(scene as any).videoUrl}
+                onClick={() => {
+                  if ((scene as any).videoUrl) {
+                    window.open((scene as any).videoUrl, "_blank");
+                  }
+                }}
+              >
                 Download
               </button>
             </div>
           ))}
         </div>
       )}
-      {stitchJob && stitchJob.status === "done" && stitchJob.url && (
+      {stitchJob && (
         <div className="mt-6 p-4 border rounded bg-muted">
           <h3 className="font-semibold mb-2">Final Stitched Reel</h3>
-          <video
-            src={stitchJob.url}
-            controls
-            className="w-full max-w-md rounded"
-          />
-          <div className="mt-2">
-            <a
-              href={stitchJob.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 underline"
-            >
-              Download Final Reel
-            </a>
-          </div>
+          {stitchJob.status === "done" && stitchJob.url ? (
+            <>
+              <video
+                src={stitchJob.url}
+                controls
+                className="w-full max-w-md rounded"
+              />
+              <div className="mt-2">
+                <a
+                  href={stitchJob.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 underline"
+                >
+                  Download Final Reel
+                </a>
+              </div>
+            </>
+          ) : stitchJob.status === "failed" ? (
+            <div className="text-red-600">Failed: {stitchJob.error}</div>
+          ) : (
+            <div className="text-muted-foreground">
+              Status: <span className="font-semibold">{stitchJob.status}</span>
+              <span className="ml-2">Rendering, please wait…</span>
+            </div>
+          )}
         </div>
       )}
     </div>
