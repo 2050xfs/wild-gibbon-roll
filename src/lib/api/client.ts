@@ -32,3 +32,11 @@ export async function ingestSources(urls: string[]): Promise<{ ok: boolean; sour
 export async function selectSceneVersion(versionId: string): Promise<{ ok: boolean }> {
   return apiPost<{ ok: boolean }>("/functions/v1/scenes-select-version", { versionId });
 }
+
+export async function getSceneVersions(sceneId: string): Promise<any[]> {
+  const res = await fetch(`/rest/v1/scene_versions?scene_id=eq.${encodeURIComponent(sceneId)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) return [];
+  return res.json();
+}

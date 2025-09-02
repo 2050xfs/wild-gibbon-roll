@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
-import { ingestSources } from "@/lib/api/client";
+import { ingestSources, getSceneVersions } from "@/lib/api/client";
 
 const transitions = [
   { value: "none", label: "None" },
@@ -16,17 +16,9 @@ const StitchModal = ({
   onClose: () => void;
 }) => {
   const scenes = useUgcStore((s) => s.scenes);
-  // For demo, assume each scene has a selectedVersion with a rendition_url or source_url
-  const selectedVersions = scenes.map((scene) => ({
-    ...scene,
-    rendition_url: (scene as any).rendition_url,
-    source_url: (scene as any).source_url,
-    selected: true,
-  }));
 
-  const [order, setOrder] = React.useState<string[]>(
-    selectedVersions.map((s) => s.id)
-  );
+  const [selectedVersions, setSelectedVersions] = React.useState<any[]>([]);
+  const [order, setOrder] = React.useState<string[]>([]);
   const [transition, setTransition] = React.useState("none");
   const [endCard, setEndCard] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -35,9 +27,20 @@ const StitchModal = ({
   const startStitch = useUgcStore((s) => s.startStitch);
   const clearStitch = useUgcStore((s) => s.clearStitch);
 
+  // Fetch selected, ready versions for all scenes
   React.useEffect(() => {
-    setOrder(selectedVersions.map((s) => s.id));
-  }, [open, selectedVersions.length]);
+    async function fetchSelectedVersions() {
+      const all: any[] = [];
+      for (const scene of scenes) {
+        const versions = await getSceneVersions(scene.id);
+        const selected = versions.find((v: any) => v.selected && v.status === "ready");
+        if (selected) all.push({ ...selected, index: scene.index, prompt: scene.prompt });
+      }
+      setSelectedVersions(all);
+      setOrder(all.map((v) => v.scene_id));
+    }
+    if (open) fetchSelectedVersions();
+  }, [open, scenes]);
 
   React.useEffect(() => {
     if (!open) clearStitch?.();
@@ -46,8 +49,8 @@ const StitchModal = ({
 
   const handleStitch = async () => {
     setSubmitting(true);
-    const sceneUrls = order.map((id) => {
-      const v = selectedVersions.find((s) => s.id === id);
+    const sceneUrls = order.map((sceneId) => {
+      const v = selectedVersions.find((s) => s.scene_id === sceneId);
       return v?.rendition_url || v?.source_url || "";
     });
     try {
@@ -89,7 +92,7 @@ const StitchModal = ({
           <div className="font-medium mb-2">Order Scenes</div>
           <ol className="space-y-1">
             {order.map((sceneId, idx) => {
-              const scene = selectedVersions.find((s) => s.id === sceneId);
+              const scene = selectedVersions.find((s) => s.scene_id === sceneId);
               return (
                 <li
                   key={sceneId}

@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { Scene } from "@/lib/types/ugc";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
-import { selectSceneVersion } from "@/lib/api/client";
+import { selectSceneVersion, getSceneVersions } from "@/lib/api/client";
 
 type Props = { scene: Scene };
 
@@ -22,15 +22,25 @@ const statusLabels: Record<string, string> = {
 const SceneCard = ({ scene }: Props) => {
   const sceneStatus = useUgcStore((s) => s.sceneStatus?.[scene.id] || "idle");
   const sendPrompt = useUgcStore((s) => s.sendPrompt);
-  // For demo, fake versions array
-  const versions = [
-    { versionId: "v1", status: "ready", selected: true, url: (scene as any).videoUrl },
-    // Add more versions as needed
-  ];
+
+  const [versions, setVersions] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  const fetchVersions = React.useCallback(async () => {
+    setLoading(true);
+    const data = await getSceneVersions(scene.id);
+    setVersions(data);
+    setLoading(false);
+  }, [scene.id]);
+
+  React.useEffect(() => {
+    fetchVersions();
+    // Optionally, poll or subscribe for updates
+  }, [fetchVersions]);
 
   const handleSelect = async (versionId: string) => {
     await selectSceneVersion(versionId);
-    // Optionally: refresh state from DB
+    fetchVersions();
   };
 
   return (
@@ -55,20 +65,27 @@ const SceneCard = ({ scene }: Props) => {
       )}
       {/* Version tabs */}
       <div className="flex gap-2 mt-2">
-        {versions.map((v, idx) => (
-          <button
-            key={v.versionId}
-            className={`px-2 py-1 rounded text-xs font-medium border ${
-              v.selected
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-muted text-muted-foreground border-muted"
-            }`}
-            onClick={() => handleSelect(v.versionId)}
-            disabled={v.selected}
-          >
-            V{idx + 1} {v.selected && "✓"}
-          </button>
-        ))}
+        {loading ? (
+          <span className="text-xs text-muted-foreground">Loading versions…</span>
+        ) : versions.length === 0 ? (
+          <span className="text-xs text-muted-foreground">No versions yet</span>
+        ) : (
+          versions.map((v, idx) => (
+            <button
+              key={v.id}
+              className={`px-2 py-1 rounded text-xs font-medium border ${
+                v.selected
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted text-muted-foreground border-muted"
+              }`}
+              onClick={() => handleSelect(v.id)}
+              disabled={v.selected}
+              title={v.status}
+            >
+              V{idx + 1} {v.selected && "✓"}
+            </button>
+          ))
+        )}
       </div>
     </div>
   );
