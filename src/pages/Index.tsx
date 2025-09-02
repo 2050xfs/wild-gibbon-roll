@@ -4,12 +4,9 @@ import * as React from "react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import CreativeBriefForm from "@/components/CreativeBriefForm";
 import PromptPreview from "@/components/PromptPreview";
-import AnalyzeImagePanel from "@/components/AnalyzeImagePanel";
+import ImageReferenceWithAnalysis from "@/components/ImageReferenceWithAnalysis";
 import KieConsole from "@/components/KieConsole";
 import type { CreativeBrief, SceneOutput } from "../types/ugc";
-import { showError } from "@/utils/toast";
-import { supabase } from "@/integrations/supabase/client";
-import { buildVeoPrompt } from "@/utils/veoPrompt";
 import { Link } from "react-router-dom";
 
 type ImageAnalysis = {
@@ -24,64 +21,22 @@ const Index = () => {
   const [scenes, setScenes] = React.useState<SceneOutput[] | undefined>(undefined);
   const [directImageUrl, setDirectImageUrl] = React.useState<string | undefined>(undefined);
   const [analysis, setAnalysis] = React.useState<ImageAnalysis | null | undefined>(undefined);
-  const [loadingAnalysis, setLoadingAnalysis] = React.useState(false);
-  const [analysisError, setAnalysisError] = React.useState<string | null>(null);
-  const [showKie, setShowKie] = React.useState(false);
 
-  // When brief or image changes, trigger analysis and prompt generation
+  // When brief or image/analysis changes, generate prompts
   React.useEffect(() => {
     if (!brief || !directImageUrl) {
-      setAnalysis(undefined);
       setScenes(undefined);
       return;
     }
+    setScenes(buildScenesWithAnalysis(brief, directImageUrl, analysis));
+    // eslint-disable-next-line
+  }, [brief, directImageUrl, analysis]);
 
-    let cancelled = false;
-
-    async function analyzeAndGenerate() {
-      setLoadingAnalysis(true);
-      setAnalysis(undefined);
-      setAnalysisError(null);
-
-      // Analyze image
-      let analysisResult: ImageAnalysis | null = null;
-      try {
-        const { data, error } = await supabase.functions.invoke("analyze-image", {
-          body: { imageUrl: directImageUrl },
-        });
-        if (error) throw new Error(error.message || "Image analysis failed");
-        analysisResult = (data?.analysis ?? null) as ImageAnalysis | null;
-        if (!cancelled) setAnalysis(analysisResult);
-      } catch (e: any) {
-        if (!cancelled) {
-          setAnalysisError(e?.message || "Image analysis failed");
-          setAnalysis(null);
-        }
-      } finally {
-        setLoadingAnalysis(false);
-      }
-
-      // Generate scenes, always referencing image and analysis
-      if (!cancelled) {
-        const scenes = buildScenesWithAnalysis(brief, directImageUrl, analysisResult);
-        setScenes(scenes);
-      }
-    }
-
-    analyzeAndGenerate();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [brief, directImageUrl]);
-
-  // Helper: build scenes with image and analysis
   function buildScenesWithAnalysis(
     brief: CreativeBrief,
     directImageUrl: string,
-    analysis: ImageAnalysis | null
+    analysis: ImageAnalysis | null | undefined
   ): SceneOutput[] {
-    // Explicitly type the return value for ratio
     const ratio: { video: "9:16" | "3:4" | "16:9"; image: "9:16" | "3:4" | "16:9" } = (() => {
       switch (brief.aspectRatio) {
         case "vertical_9_16":
@@ -205,11 +160,18 @@ const Index = () => {
             onBriefChange={(b, direct) => {
               setBrief(b);
               setDirectImageUrl(direct);
-              // analysis/scenes will be handled by effect
             }}
           />
 
-          {/* Step 2: Preview & Export */}
+          {/* Step 2: Image preview and analysis */}
+          {directImageUrl && (
+            <ImageReferenceWithAnalysis
+              imageUrl={directImageUrl}
+              onAnalysis={setAnalysis}
+            />
+          )}
+
+          {/* Step 3: Preview & Export */}
           <PromptPreview
             brief={brief}
             scenes={scenes}
@@ -217,40 +179,22 @@ const Index = () => {
             analysis={analysis ?? null}
           />
 
-          {/* Step 3: (Optional) Analyze Image */}
-          {directImageUrl && (
-            <AnalyzeImagePanel
-              directImageUrl={directImageUrl}
-              onAnalysis={(a) => setAnalysis(a ?? null)}
-            />
-          )}
-
-          {/* Loading/Error states for analysis */}
-          {loadingAnalysis && (
-            <div className="text-sm text-blue-600">Analyzing image and generating prompts…</div>
-          )}
-          {analysisError && (
-            <div className="text-sm text-destructive">Image analysis failed: {analysisError}</div>
-          )}
-
           {/* Step 4: (Optional) Test with KIE AI */}
           {firstScene && directImageUrl && (
             <div className="text-right">
               <button
                 className="text-xs text-blue-600 underline mb-2"
-                onClick={() => setShowKie((v) => !v)}
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
               >
-                {showKie ? "Hide" : "Test with KIE AI (advanced)"}
+                Test with KIE AI (advanced)
               </button>
-              {showKie && (
-                <KieConsole
-                  defaultPath="/api/v1/veo/generate"
-                  defaultMethod="POST"
-                  defaultBody={kieTemplate}
-                  title="KIE AI Proxy — Live Test"
-                  description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
-                />
-              )}
+              <KieConsole
+                defaultPath="/api/v1/veo/generate"
+                defaultMethod="POST"
+                defaultBody={kieTemplate}
+                title="KIE AI Proxy — Live Test"
+                description="Send a request through the secure proxy to verify your KIE AI setup. The body below is prefilled from Scene 1; adjust to match the official docs."
+              />
             </div>
           )}
         </div>
