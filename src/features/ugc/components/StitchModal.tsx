@@ -16,25 +16,28 @@ const StitchModal = ({
   onClose: () => void;
 }) => {
   const scenes = useUgcStore((s) => s.scenes);
-  const sceneStatus = useUgcStore((s) => s.sceneStatus);
-  const stitchJob = useUgcStore((s) => s.stitchJob);
-  const startStitch = useUgcStore((s) => s.startStitch);
-  const clearStitch = useUgcStore((s) => s.clearStitch);
-
-  const readyScenes = scenes.filter(
-    (scene) => sceneStatus?.[scene.id] === "ready"
-  );
+  // For demo, assume each scene has a selectedVersion with a rendition_url or source_url
+  const selectedVersions = scenes.map((scene) => ({
+    ...scene,
+    rendition_url: (scene as any).rendition_url,
+    source_url: (scene as any).source_url,
+    selected: true,
+  }));
 
   const [order, setOrder] = React.useState<string[]>(
-    readyScenes.map((s) => s.id)
+    selectedVersions.map((s) => s.id)
   );
   const [transition, setTransition] = React.useState("none");
   const [endCard, setEndCard] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
+  const stitchJob = useUgcStore((s) => s.stitchJob);
+  const startStitch = useUgcStore((s) => s.startStitch);
+  const clearStitch = useUgcStore((s) => s.clearStitch);
+
   React.useEffect(() => {
-    setOrder(readyScenes.map((s) => s.id));
-  }, [open, readyScenes.length]);
+    setOrder(selectedVersions.map((s) => s.id));
+  }, [open, selectedVersions.length]);
 
   React.useEffect(() => {
     if (!open) clearStitch?.();
@@ -43,17 +46,13 @@ const StitchModal = ({
 
   const handleStitch = async () => {
     setSubmitting(true);
-    // Use the real video URLs for each scene
     const sceneUrls = order.map((id) => {
-      const scene = readyScenes.find((s) => s.id === id);
-      return (scene && (scene as any).videoUrl) || "https://www.w3schools.com/html/mov_bbb.mp4";
+      const v = selectedVersions.find((s) => s.id === id);
+      return v?.rendition_url || v?.source_url || "";
     });
-
-    // Optionally ingest all scene URLs before stitching
     try {
       const ingestRes = await ingestSources(sceneUrls);
       const ingestedUrls = ingestRes.sources.map((s: any) => s.response?.url || s.url || s.source?.url || "");
-      // Use ingested URLs if available, else fallback to originals
       await startStitch?.({
         sceneUrls: ingestedUrls.every(Boolean) ? ingestedUrls : sceneUrls,
         order,
@@ -62,7 +61,6 @@ const StitchModal = ({
         endCard: endCard.trim() || undefined,
       });
     } catch (e) {
-      // Fallback: stitch with original URLs if ingest fails
       await startStitch?.({
         sceneUrls,
         order,
@@ -91,7 +89,7 @@ const StitchModal = ({
           <div className="font-medium mb-2">Order Scenes</div>
           <ol className="space-y-1">
             {order.map((sceneId, idx) => {
-              const scene = readyScenes.find((s) => s.id === sceneId);
+              const scene = selectedVersions.find((s) => s.id === sceneId);
               return (
                 <li
                   key={sceneId}

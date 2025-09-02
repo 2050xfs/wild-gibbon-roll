@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Scene } from "@/lib/types/ugc";
 import { useUgcStore } from "@/features/ugc/state/ugcStore";
+import { selectSceneVersion } from "@/lib/api/client";
 
 type Props = { scene: Scene };
 
@@ -21,6 +22,16 @@ const statusLabels: Record<string, string> = {
 const SceneCard = ({ scene }: Props) => {
   const sceneStatus = useUgcStore((s) => s.sceneStatus?.[scene.id] || "idle");
   const sendPrompt = useUgcStore((s) => s.sendPrompt);
+  // For demo, fake versions array
+  const versions = [
+    { versionId: "v1", status: "ready", selected: true, url: (scene as any).videoUrl },
+    // Add more versions as needed
+  ];
+
+  const handleSelect = async (versionId: string) => {
+    await selectSceneVersion(versionId);
+    // Optionally: refresh state from DB
+  };
 
   return (
     <div className="p-4 bg-card rounded shadow flex flex-col gap-2">
@@ -42,6 +53,23 @@ const SceneCard = ({ scene }: Props) => {
       {sceneStatus === "error" && (
         <div className="text-xs text-red-600">Generation failed. Try again.</div>
       )}
+      {/* Version tabs */}
+      <div className="flex gap-2 mt-2">
+        {versions.map((v, idx) => (
+          <button
+            key={v.versionId}
+            className={`px-2 py-1 rounded text-xs font-medium border ${
+              v.selected
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-muted text-muted-foreground border-muted"
+            }`}
+            onClick={() => handleSelect(v.versionId)}
+            disabled={v.selected}
+          >
+            V{idx + 1} {v.selected && "✓"}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

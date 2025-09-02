@@ -28,3 +28,7 @@ export async function getRenderStatus(renderId: string): Promise<{
 export async function ingestSources(urls: string[]): Promise<{ ok: boolean; sources: any[] }> {
   return apiPost<{ ok: boolean; sources: any[] }>("/functions/v1/ingest-source", { urls });
 }
+
+export async function selectSceneVersion(versionId: string): Promise<{ ok: boolean }> {
+  return apiPost<{ ok: boolean }>("/functions/v1/scenes-select-version", { versionId });
+}
