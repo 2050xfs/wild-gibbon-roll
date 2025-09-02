@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Scene, SceneVersion, CostBreakdown, JobStatus } from "@/lib/types/ugc";
+import { getRenderStatus } from "@/lib/api/client";
 
 type UgcBrief = {
   numVideos: number;
@@ -12,9 +13,18 @@ type UgcBrief = {
 
 type SceneStatus = "idle" | "pending" | "ready" | "error";
 
+const allowedStatus = ["queued", "rendering", "done", "failed"] as const;
+type AllowedStatus = typeof allowedStatus[number];
+
+function toAllowedStatus(status: string): AllowedStatus {
+  return allowedStatus.includes(status as AllowedStatus)
+    ? (status as AllowedStatus)
+    : "queued";
+}
+
 type StitchJob = {
   renderId: string;
-  status: "queued" | "rendering" | "done" | "failed";
+  status: AllowedStatus;
   url?: string;
   error?: string;
 };
@@ -118,7 +128,7 @@ export const useUgcStore = create<UgcState>((set, get) => ({
     set({
       stitchJob: {
         renderId: data.renderId,
-        status: data.status || "queued",
+        status: toAllowedStatus(data.status || "queued"),
       },
     });
     // Start polling
@@ -131,14 +141,13 @@ export const useUgcStore = create<UgcState>((set, get) => ({
     let tries = 0;
     while (!done && tries < 60) {
       tries++;
-      const res = await fetch(`/reels-stitch?id=${job.renderId}`);
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await getRenderStatus(job.renderId);
+      if (!data) {
         set((state) => ({
           stitchJob: {
             ...state.stitchJob!,
             status: "failed",
-            error: data?.error || "Polling failed",
+            error: "Polling failed",
           },
         }));
         return;
@@ -168,7 +177,7 @@ export const useUgcStore = create<UgcState>((set, get) => ({
       set((state) => ({
         stitchJob: {
           ...state.stitchJob!,
-          status: data.status,
+          status: toAllowedStatus(data.status),
         },
       }));
       await new Promise((r) => setTimeout(r, 4000));
